@@ -2615,6 +2615,8 @@ final class AdminController
         require_once __DIR__ . '/../updater/MigrationRunner.php';
         require_once __DIR__ . '/../updater/BackupManager.php';
         require_once __DIR__ . '/../updater/UpdateInstaller.php';
+        require_once __DIR__ . '/../updater/RollbackManager.php';
+        require_once __DIR__ . '/../updater/UpdateChecker.php';
 
         $forceCheck = isset($_GET['check']) && $_GET['check'] === 'now';
         $updateInfo = UpdateChecker::check($forceCheck);
@@ -2625,11 +2627,10 @@ final class AdminController
             $action = trim($_POST['action'] ?? '');
 
             if ($action === 'apply_update') {
-                $fresh = UpdateChecker::check(true);
-                $targetVersion = trim($_POST['target_version'] ?? ($fresh['latest_version'] ?? ($updateInfo['latest_version'] ?? '')));
-                $downloadUrl = !empty($fresh['download_url']) ? $fresh['download_url'] : trim($_POST['download_url'] ?? ($updateInfo['download_url'] ?? ''));
-                $sha256 = !empty($fresh['sha256']) ? $fresh['sha256'] : trim($_POST['sha256'] ?? ($updateInfo['sha256'] ?? ''));
-                $signature = !empty($fresh['signature']) ? $fresh['signature'] : trim($_POST['signature'] ?? ($updateInfo['signature'] ?? ''));
+                $targetVersion = trim($_POST['target_version'] ?? ($updateInfo['latest_version'] ?? ''));
+                $downloadUrl = trim($_POST['download_url'] ?? ($updateInfo['download_url'] ?? ''));
+                $sha256 = trim($_POST['sha256'] ?? ($updateInfo['sha256'] ?? ''));
+                $signature = trim($_POST['signature'] ?? ($updateInfo['signature'] ?? ''));
 
                 $adminName = $_SESSION['admin']['name'] ?? ($_SESSION['admin_name'] ?? 'System Administrator');
                 $installer = new UpdateInstaller($this->db);

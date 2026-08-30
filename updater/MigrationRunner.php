@@ -169,12 +169,30 @@ final class MigrationRunner
             return;
         }
 
-        // Split queries by semicolon followed by line break or end of file
-        $queries = preg_split('/;\s*[\r\n]+/', $sql);
+        // 1. Strip UTF-8 BOM if present
+        $sql = preg_replace('/^\xEF\xBB\xBF/', '', $sql);
+
+        // 2. Remove multi-line comments /* ... */
+        $sql = preg_replace('!/\*.*?\*/!s', '', $sql);
+
+        // 3. Remove single-line comments (-- or #) line by line
+        $lines = explode("\n", $sql);
+        $cleanLines = [];
+        foreach ($lines as $line) {
+            $trimmedLine = trim($line);
+            if (str_starts_with($trimmedLine, '--') || str_starts_with($trimmedLine, '#')) {
+                continue;
+            }
+            $cleanLines[] = $line;
+        }
+        $cleanSql = implode("\n", $cleanLines);
+
+        // 4. Split queries by semicolon followed by line break or end of file
+        $queries = preg_split('/;\s*[\r\n]+/', $cleanSql);
 
         foreach ($queries as $query) {
             $query = trim($query);
-            if ($query !== '' && !str_starts_with($query, '--') && !str_starts_with($query, '/*')) {
+            if ($query !== '') {
                 try {
                     $this->db->exec($query);
                 } catch (PDOException $e) {

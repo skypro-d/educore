@@ -206,11 +206,12 @@ jobs:
           echo "Package SHA256:"
           echo "${SHA256_HASH}"
 
-          SECRET_KEY="${SIGNING_SECRET}"
-          if [ -z "${SECRET_KEY}" ]; then
-            echo "::warning ::SKYSAVING_SECRET_KEY secret not found in GitHub repository settings. Using platform default signing key."
-            SECRET_KEY="skysavingtech_secret_key_2026_super_secure_hash"
+          if [ -z "${SIGNING_SECRET}" ]; then
+            echo "::error ::SKYSAVING_SECRET_KEY is not set in GitHub repository secrets."
+            echo "Go to: Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
           fi
+          SECRET_KEY="${SIGNING_SECRET}"
 
           VERSION="${{ steps.vars.outputs.VERSION }}"
 
@@ -285,17 +286,20 @@ jobs:
         run: |
           set -e
 
-          LIVE_URL="${EDUCORE_LIVE_URL}"
-          if [ -z "${LIVE_URL}" ]; then
-            echo "::notice ::EDUCORE_LIVE_URL secret not set. Defaulting to http://educore.skysaveings.com.ng"
-            LIVE_URL="http://educore.skysaveings.com.ng"
+          # ── Validate required secrets ──────────────────────────────────────
+          if [ -z "${EDUCORE_LIVE_URL}" ]; then
+            echo "::error ::EDUCORE_LIVE_URL secret is not set in GitHub repository secrets."
+            echo "Go to: Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
           fi
 
-          TOKEN="${ADMIN_TOKEN}"
-          if [ -z "${TOKEN}" ]; then
-            echo "::notice ::SKYSAVING_SECRET_KEY secret not set. Defaulting to standard platform key."
-            TOKEN="skysavingtech_secret_key_2026_super_secure_hash"
+          if [ -z "${ADMIN_TOKEN}" ]; then
+            echo "::error ::SKYSAVING_SECRET_KEY secret is not set in GitHub repository secrets."
+            echo "Go to: Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
           fi
+
+          LIVE_URL="${EDUCORE_LIVE_URL}"
 
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             RELEASE_TAG="v${VERSION}"
@@ -312,45 +316,56 @@ jobs:
           fi
 
           echo "======================================"
-          echo "Registering Release"
+          echo "Registering Release with EduCore Live"
           echo "======================================"
-          echo "Version: ${VERSION}"
-          echo "Channel: ${CHANNEL}"
+          echo "Version:  ${VERSION}"
+          echo "Channel:  ${CHANNEL}"
           echo "Mandatory: ${MANDATORY_VALUE}"
+          echo "SHA256:   ${SHA256}"
           echo "Download: ${DOWNLOAD_URL}"
+          echo "Target:   ${LIVE_URL%/}/api/index.php?route=v1/releases/register"
 
           # Construct clean base URL without trailing slash
           CLEAN_LIVE_URL="${LIVE_URL%/}"
 
+          # Build JSON payload — SHA256 is the EXACT hash of the uploaded ZIP
+          PAYLOAD=$(php -r '
+            $data = [
+                "version"          => ltrim(getenv("VERSION"), "v"),
+                "download_url"     => getenv("DOWNLOAD_URL"),
+                "download_file"    => getenv("PACKAGE_NAME"),
+                "sha256"           => getenv("SHA256"),
+                "signature"        => getenv("SIGNATURE"),
+                "release_channel"  => getenv("CHANNEL"),
+                "mandatory"        => (int) getenv("MANDATORY_VALUE"),
+                "min_php_version"  => "8.3.0",
+                "min_mysql_version" => "8.0.0",
+                "release_notes"    => "Automated build and release via GitHub Actions."
+            ];
+            echo json_encode($data, JSON_UNESCAPED_SLASHES);
+          ')
+
           RESPONSE=$(curl \
             --silent \
             --show-error \
-            --fail-with-body \
             --request POST \
-            "${CLEAN_LIVE_URL}/index.php?route=api/v1/releases/register" \
+            "${CLEAN_LIVE_URL}/api/index.php?route=v1/releases/register" \
             --header "Authorization: Bearer ${ADMIN_TOKEN}" \
             --header "Content-Type: application/json" \
-            --data "$(php -r '
-              $data = [
-                  "version" => ltrim(getenv("VERSION"), "v"),
-                  "download_url" => getenv("DOWNLOAD_URL"),
-                  "download_file" => getenv("PACKAGE_NAME"),
-                  "sha256" => getenv("SHA256"),
-                  "signature" => getenv("SIGNATURE"),
-                  "release_channel" => getenv("CHANNEL"),
-                  "mandatory" => (int) getenv("MANDATORY_VALUE"),
-                  "min_php_version" => "8.3.0",
-                  "min_mysql_version" => "8.0.0",
-                  "release_notes" => "Automated build and release via GitHub Actions."
-              ];
-
-              echo json_encode($data, JSON_UNESCAPED_SLASHES);
-            ')" \
+            --data "${PAYLOAD}" \
           )
 
           echo ""
           echo "Live Server Response:"
           echo "${RESPONSE}"
 
-          echo ""
-          echo "Release successfully registered with EduCore Live Server."
+          # Validate response — must contain status:success or status:error with 409 (already registered)
+          if echo "${RESPONSE}" | php -r 'exit(in_array(json_decode(file_get_contents("php://stdin"),true)["status"] ?? "", ["success","error"]) ? 0 : 1);'; then
+            if echo "${RESPONSE}" | php -r '$r=json_decode(file_get_contents("php://stdin"),true); if(($r["status"]??"")!=="success" && !str_contains($r["message"]??"","immutable")) { fwrite(STDERR, "ERROR: ".$r["message"]."\n"); exit(1); }'; then
+              echo ""
+              echo "Release successfully registered with EduCore Live Server."
+            fi
+          else
+            echo "::error ::Registration endpoint returned unexpected response. Check EDUCORE_LIVE_URL points to the correct server."
+            exit 1
+          fi

@@ -46,14 +46,16 @@ final class UpdateDownloader
         $fp = fopen($tmpZipPath, 'w+');
         $ch = curl_init($downloadUrl);
         curl_setopt_array($ch, [
-            CURLOPT_FILE => $fp,
-            CURLOPT_TIMEOUT => 120,
+            CURLOPT_FILE           => $fp,
+            CURLOPT_TIMEOUT        => 120,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'EduCore-Updater/' . (defined('EDUCORE_VERSION') ? EDUCORE_VERSION : '1.0.0')
+            CURLOPT_USERAGENT      => 'EduCore-Updater/' . (defined('EDUCORE_VERSION') ? EDUCORE_VERSION : '1.0.0'),
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
         ]);
-        $exec = curl_exec($ch);
+        $exec    = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr = curl_error($ch);
+        $curlErr  = curl_error($ch);
         curl_close($ch);
         fclose($fp);
 
@@ -69,12 +71,33 @@ final class UpdateDownloader
             } else {
                 @unlink($tmpZipPath);
                 return [
-                    'success' => false,
+                    'success'  => false,
                     'zip_path' => '',
-                    'sha256' => '',
-                    'message' => "Download failed (HTTP {$httpCode}). " . ($curlErr ?: '')
+                    'sha256'   => '',
+                    'message'  => "Download failed (HTTP {$httpCode}). " . ($curlErr ?: '')
                 ];
             }
+        }
+
+        // 1b. Detect HTML error page — server returned a web page instead of a ZIP.
+        //     All valid ZIP files begin with magic bytes: PK\x03\x04 (50 4B 03 04).
+        $fh    = fopen($tmpZipPath, 'rb');
+        $magic = $fh ? fread($fh, 4) : '';
+        if ($fh) {
+            fclose($fh);
+        }
+        if ($magic !== "PK\x03\x04") {
+            $rawBody = (string) @file_get_contents($tmpZipPath);
+            $preview = substr(strip_tags($rawBody), 0, 300);
+            @unlink($tmpZipPath);
+            return [
+                'success'  => false,
+                'zip_path' => '',
+                'sha256'   => '',
+                'message'  => "Download failed: The update server returned an HTML error page instead of the update package "
+                            . "(HTTP {$httpCode}). The download link may have expired or the update server is temporarily "
+                            . "unavailable. Please try again in a few minutes. Server response preview: " . $preview
+            ];
         }
 
         // 2. Compute Actual SHA256
@@ -87,10 +110,10 @@ final class UpdateDownloader
                 if ($expectedSha256 !== 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855') {
                     @unlink($tmpZipPath);
                     return [
-                        'success' => false,
+                        'success'  => false,
                         'zip_path' => '',
-                        'sha256' => $actualSha256,
-                        'message' => "Integrity checksum verification failed. Expected: {$expectedSha256}, Actual: {$actualSha256}"
+                        'sha256'   => $actualSha256,
+                        'message'  => "Integrity checksum verification failed. Expected: {$expectedSha256}, Actual: {$actualSha256}"
                     ];
                 }
             }

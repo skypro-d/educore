@@ -610,8 +610,272 @@ switch ($route) {
         $device = authorize_device($db);
         json_success([
             'firmware_version' => $device['firmware_version'] ?: '2.0.0',
-            'latest_version' => '2.1.0',
+            'latest_version'   => '2.1.0',
             'update_available' => false
+        ]);
+        break;
+
+    // ── Release Infrastructure ────────────────────────────────────────────────
+
+    /**
+     * POST v1/releases/register
+     *
+     * Called exclusively by GitHub Actions after a successful release build.
+     * Registers a new immutable release record including the exact SHA256 of
+     * the ZIP that was uploaded to GitHub Releases.
+     *
+     * Authentication: Authorization: Bearer <RELEASE_API_SECRET>
+     * Body: JSON
+     *
+     * Returns 201 on success, 400 on validation error, 401 on auth failure,
+     * 409 on duplicate version.
+     *
+     * NOTE: This endpoint calls ensure_system_releases_table() before every
+     * database operation. This mirrors UpdateInstaller::ensureHistoryTable()
+     * and guarantees the table exists even on a fresh installation before any
+     * school has applied an update (i.e., before MigrationRunner has run).
+     */
+    case 'v1/releases/register':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            json_error('Method Not Allowed. Must be POST.', 405);
+        }
+
+        // ── Table Bootstrap (idempotent, runs in microseconds if table exists) ─
+        ensure_system_releases_table($db);
+
+        // ── Authentication ────────────────────────────────────────────────────
+        $headers = getallheaders();
+        $authHeader = trim($headers['Authorization'] ?? $headers['authorization'] ?? '');
+        $bearerToken = '';
+        if (str_starts_with($authHeader, 'Bearer ')) {
+            $bearerToken = substr($authHeader, 7);
+        }
+
+        $releaseApiSecret = getEnvConfig('RELEASE_API_SECRET', '');
+        if ($releaseApiSecret === '' || $bearerToken === '') {
+            json_error('Unauthorized: missing or unconfigured API secret.', 401);
+        }
+        if (!hash_equals($releaseApiSecret, $bearerToken)) {
+            json_error('Unauthorized: invalid Bearer token.', 401);
+        }
+
+        // ── Parse JSON body ───────────────────────────────────────────────────
+        $body = (string) file_get_contents('php://input');
+        $data = json_decode($body, true);
+        if (!is_array($data)) {
+            json_error('Invalid JSON body.', 400);
+        }
+
+        // ── Input extraction ──────────────────────────────────────────────────
+        $rVersion      = trim((string) ($data['version']           ?? ''));
+        $rDownloadUrl  = trim((string) ($data['download_url']      ?? ''));
+        $rDownloadFile = trim((string) ($data['download_file']     ?? ''));
+        $rSha256       = strtolower(trim((string) ($data['sha256'] ?? '')));
+        $rSignature    = trim((string) ($data['signature']         ?? ''));
+        $rChannel      = trim((string) ($data['release_channel']   ?? 'stable'));
+        $rMandatory    = isset($data['mandatory']) ? (int)(bool)$data['mandatory'] : 0;
+        $rMinPhp       = trim((string) ($data['min_php_version']   ?? '8.3.0'));
+        $rMinMysql     = trim((string) ($data['min_mysql_version'] ?? '8.0.0'));
+        $rNotes        = trim((string) ($data['release_notes']     ?? ''));
+
+        // ── Validation ────────────────────────────────────────────────────────
+        // Semantic version: 1.0.0 or 1.0.0-beta.1 (dot-only 4-part versions rejected)
+        if (!preg_match('/^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.\-]*)?$/', $rVersion)) {
+            json_error('Invalid version format. Expected semver, e.g. 1.0.2 or 1.0.2-beta.1.', 400);
+        }
+        if ($rDownloadUrl === '') {
+            json_error('download_url is required.', 400);
+        }
+        if (!filter_var($rDownloadUrl, FILTER_VALIDATE_URL)) {
+            json_error('download_url must be a valid URL.', 400);
+        }
+        if ($rDownloadFile === '') {
+            json_error('download_file is required.', 400);
+        }
+        // SHA256 must be exactly 64 lowercase hex characters
+        if (!preg_match('/^[0-9a-f]{64}$/', $rSha256)) {
+            json_error('sha256 must be a 64-character lowercase hex string.', 400);
+        }
+        if (!in_array($rChannel, ['stable', 'beta', 'canary'], true)) {
+            json_error('release_channel must be one of: stable, beta, canary.', 400);
+        }
+
+        // ── Duplicate version guard (immutable releases) ──────────────────────
+        $chkStmt = $db->prepare('SELECT `id`, `sha256` FROM `system_releases` WHERE `version` = ? LIMIT 1');
+        $chkStmt->execute([$rVersion]);
+        $existing = $chkStmt->fetch(PDO::FETCH_ASSOC);
+        if ($existing) {
+            http_response_code(409);
+            echo json_encode([
+                'status'  => 'error',
+                'message' => "Version {$rVersion} already exists and is immutable. Releases cannot be overwritten."
+            ]);
+            exit;
+        }
+
+        // ── Insert ────────────────────────────────────────────────────────────
+        $insStmt = $db->prepare("
+            INSERT INTO `system_releases`
+                (`version`, `download_url`, `download_file`, `sha256`, `signature`,
+                 `release_channel`, `mandatory`, `min_php_version`, `min_mysql_version`,
+                 `release_notes`, `is_published`, `released_at`, `created_at`, `updated_at`)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW(), NOW())
+        ");
+        $insStmt->execute([
+            $rVersion, $rDownloadUrl, $rDownloadFile, $rSha256, $rSignature ?: null,
+            $rChannel, $rMandatory, $rMinPhp, $rMinMysql, $rNotes ?: null
+        ]);
+
+        http_response_code(201);
+        echo json_encode([
+            'status'          => 'success',
+            'message'         => "Release {$rVersion} registered successfully.",
+            'version'         => $rVersion,
+            'release_channel' => $rChannel,
+            'mandatory'       => (bool) $rMandatory
+        ]);
+        exit;
+
+    /**
+     * GET v1/releases/latest
+     *
+     * Returns the latest published release for the requested channel.
+     * Called by school installations to check for updates.
+     * No authentication required (public metadata only — no secrets returned).
+     *
+     * Query params:
+     *   channel  stable|beta|canary  (default: stable)
+     */
+    case 'v1/releases/latest':
+        ensure_system_releases_table($db);
+
+        $channel = trim($_GET['channel'] ?? 'stable');
+        if (!in_array($channel, ['stable', 'beta', 'canary'], true)) {
+            $channel = 'stable';
+        }
+
+        $latStmt = $db->prepare("
+            SELECT `version`, `download_url`, `download_file`, `sha256`, `signature`,
+                   `release_channel`, `mandatory`, `min_php_version`, `min_mysql_version`,
+                   `release_notes`, `released_at`
+            FROM `system_releases`
+            WHERE `release_channel` = ? AND `is_published` = 1
+            ORDER BY `released_at` DESC
+            LIMIT 1
+        ");
+        $latStmt->execute([$channel]);
+        $release = $latStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$release) {
+            json_success([
+                'update_available' => false,
+                'channel'          => $channel,
+                'message'          => 'No published releases found for this channel.'
+            ]);
+        }
+
+        json_success([
+            'update_available'  => true,
+            'version'           => $release['version'],
+            'download_url'      => $release['download_url'],
+            'download_file'     => $release['download_file'],
+            'sha256'            => $release['sha256'],
+            'signature'         => $release['signature'] ?? '',
+            'release_channel'   => $release['release_channel'],
+            'mandatory'         => (bool) $release['mandatory'],
+            'min_php_version'   => $release['min_php_version'],
+            'min_mysql_version' => $release['min_mysql_version'],
+            'release_notes'     => $release['release_notes'] ?? '',
+            'released_at'       => $release['released_at']
+        ]);
+        break;
+
+    /**
+     * GET/POST v1/updates/check
+     *
+     * Called by UpdateChecker::check() via ApiKeyService::sendSecureRequest().
+     *
+     * UpdateChecker contract (exact field names it reads from the response):
+     *   $response['success']             bool
+     *   $response['latest_version']      string  (used in version_compare)
+     *   $response['sha256']              string  (stored in cache, passed to UpdateInstaller)
+     *   $response['checksum']            string  (alias, also stored as 'sha256')
+     *   $response['download_url']        string
+     *   $response['signature']           string
+     *   $response['mandatory']           bool
+     *   $response['release_channel']     string
+     *   $response['minimum_php_version'] string  (note: 'minimum_' prefix in this field)
+     *   $response['release_notes']       string
+     *   $response['release_date']        string  (Y-m-d)
+     *
+     * Body params (from ApiKeyService::sendSecureRequest):
+     *   current_version, release_channel, installation_id, api_key
+     */
+    case 'v1/updates/check':
+        ensure_system_releases_table($db);
+
+        // Accepts both GET and POST (ApiKeyService sends POST with JSON body)
+        $rawBody  = file_get_contents('php://input');
+        $postData = json_decode($rawBody ?: '{}', true) ?: [];
+
+        $currentVersion = ltrim(trim((string) ($postData['current_version'] ?? ($_GET['current_version'] ?? '0.0.0'))), 'v');
+        $requestChannel = trim((string) ($postData['release_channel'] ?? ($_GET['channel'] ?? 'stable')));
+        if (!in_array($requestChannel, ['stable', 'beta', 'canary'], true)) {
+            $requestChannel = 'stable';
+        }
+
+        // Fetch the latest published release for this channel
+        $updStmt = $db->prepare("
+            SELECT `version`, `download_url`, `download_file`, `sha256`, `signature`,
+                   `release_channel`, `mandatory`, `min_php_version`, `min_mysql_version`,
+                   `release_notes`, `released_at`
+            FROM `system_releases`
+            WHERE `release_channel` = ? AND `is_published` = 1
+            ORDER BY `released_at` DESC
+            LIMIT 1
+        ");
+        $updStmt->execute([$requestChannel]);
+        $latestRelease = $updStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$latestRelease) {
+            // No releases registered yet — return current version, no update
+            json_success([
+                'success'             => true,
+                'update_available'    => false,
+                'current_version'     => $currentVersion,
+                'latest_version'      => $currentVersion,
+                'release_channel'     => $requestChannel,
+                'mandatory'           => false,
+                'minimum_php_version' => '8.3.0',
+                'release_date'        => date('Y-m-d'),
+                'release_notes'       => 'No updates available.',
+                'checksum'            => '',
+                'sha256'              => '',
+                'signature'           => '',
+                'download_url'        => ''
+            ]);
+        }
+
+        $latestVersion   = ltrim((string) $latestRelease['version'], 'v');
+        $updateAvailable = version_compare($latestVersion, $currentVersion, '>');
+
+        // Return the exact fields UpdateChecker::check() reads from $response
+        json_success([
+            'success'             => true,
+            'update_available'    => $updateAvailable,
+            'current_version'     => $currentVersion,
+            'latest_version'      => $latestVersion,
+            'release_channel'     => $latestRelease['release_channel'],
+            'mandatory'           => (bool) $latestRelease['mandatory'],
+            'minimum_php_version' => $latestRelease['min_php_version'],
+            'release_date'        => date('Y-m-d', strtotime($latestRelease['released_at'])),
+            'release_notes'       => $latestRelease['release_notes'] ?? '',
+            // Both field names — UpdateChecker reads: $response['sha256'] ?? ($response['checksum'] ?? '')
+            'sha256'              => $latestRelease['sha256'],
+            'checksum'            => $latestRelease['sha256'],
+            'signature'           => $latestRelease['signature'] ?? '',
+            'download_url'        => $latestRelease['download_url'],
+            'download_file'       => $latestRelease['download_file']
         ]);
         break;
 

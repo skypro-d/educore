@@ -53,7 +53,8 @@ class TenantPDO extends PDO
         $excludePatterns = [
             // Core SaaS / registry tables
             'superadmins', 'schools', 'school_licenses', 'school_subscriptions', 
-            'super_audit_logs', 'system_updates', 'school_update_log', 
+            'super_audit_logs', 'system_updates', 'system_releases', 'system_update_history',
+            'school_update_log', 'migrations',
             'support_tickets', 'support_ticket_replies', 'roles', 'permissions', 
             'role_permissions',
             // Customer Portal tables
