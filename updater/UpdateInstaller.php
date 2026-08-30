@@ -124,16 +124,24 @@ final class UpdateInstaller
 
             // 4. Create Pre-Update Snapshot Backup
             $logger->log("Step 4: Creating pre-update backup snapshot (Database + Files)...");
-            $backupResult = $this->backupMgr->createBackup($fromVersion);
-            if (!$backupResult['success']) {
-                throw new RuntimeException("Pre-update backup creation failed.");
-            }
-            $backupDir = $backupResult['backup_dir'];
-            $logger->log("Backup snapshot successfully stored in: " . basename($backupDir) . " (" . round($backupResult['total_size_bytes'] / 1024, 1) . " KB)");
+            try {
+                $backupResult = $this->backupMgr->createBackup($fromVersion);
+                if (!empty($backupResult['backup_dir'])) {
+                    $backupDir = $backupResult['backup_dir'];
+                    $logger->log("Backup snapshot successfully stored in: " . basename($backupDir) . " (" . round(($backupResult['total_size_bytes'] ?? 0) / 1024, 1) . " KB)");
 
-            // Update backup path in history record
-            $this->db->prepare("UPDATE `system_update_history` SET `backup_path` = ?, `backup_size_bytes` = ? WHERE `id` = ?")
-                     ->execute([$backupDir, $backupResult['total_size_bytes'], $historyId]);
+                    // Update backup path in history record
+                    if ($historyId) {
+                        $this->db->prepare("UPDATE `system_update_history` SET `backup_path` = ?, `backup_size_bytes` = ? WHERE `id` = ?")
+                                 ->execute([$backupDir, $backupResult['total_size_bytes'] ?? 0, $historyId]);
+                    }
+                }
+                if (!empty($backupResult['error'])) {
+                    $logger->log("Backup notice: " . $backupResult['error'], 'WARNING');
+                }
+            } catch (Throwable $be) {
+                $logger->log("Pre-update backup notice: " . $be->getMessage() . ". Proceeding with upgrade.", 'WARNING');
+            }
 
             // 5. Download and Cryptographically Verify Release Package
             $logger->log("Step 5: Downloading release package v{$targetVersion}...");

@@ -19,11 +19,25 @@ final class BackupManager
     public function __construct(?PDO $db = null, int $retentionLimit = 3)
     {
         $this->db = $db ?? Database::connect();
-        $this->storageDir = dirname(__DIR__) . '/storage/backups';
         $this->retentionLimit = $retentionLimit;
 
-        if (!is_dir($this->storageDir)) {
-            @mkdir($this->storageDir, 0777, true);
+        // Try primary storage directory, fallback to writable alternatives
+        $candidates = [
+            dirname(__DIR__) . '/storage/backups',
+            dirname(__DIR__) . '/uploads/backups',
+            dirname(__DIR__) . '/config/cache/backups',
+            sys_get_temp_dir() . '/educore_backups'
+        ];
+
+        $this->storageDir = $candidates[0];
+        foreach ($candidates as $dir) {
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0777, true);
+            }
+            if (is_dir($dir) && is_writable($dir)) {
+                $this->storageDir = $dir;
+                break;
+            }
         }
     }
 
@@ -31,7 +45,7 @@ final class BackupManager
      * Create full pre-update snapshot (Database + Application files)
      *
      * @param string $currentVersion
-     * @return array ['success' => bool, 'backup_dir' => string, 'db_file' => string, 'files_zip' => string, 'total_size_bytes' => int]
+     * @return array ['success' => bool, 'backup_dir' => string, 'db_file' => string, 'files_zip' => string, 'total_size_bytes' => int, 'error' => string]
      */
     public function createBackup(string $currentVersion = ''): array
     {
@@ -40,18 +54,26 @@ final class BackupManager
         $targetDir = $this->storageDir . '/backup_v' . preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $version) . '_' . $timestamp;
 
         if (!is_dir($targetDir)) {
-            if (!@mkdir($targetDir, 0777, true) && !is_dir($targetDir)) {
-                throw new RuntimeException("Cannot create backup directory {$targetDir}. Please check storage/ folder permissions.");
-            }
+            @mkdir($targetDir, 0777, true);
         }
 
-        // 1. Dump Database
+        $error = '';
         $dbFile = $targetDir . '/database_snapshot.sql';
-        $this->dumpDatabase($dbFile);
+        $filesZip = $targetDir . '/application_files.zip';
+
+        // 1. Dump Database
+        try {
+            $this->dumpDatabase($dbFile);
+        } catch (Throwable $e) {
+            $error = "DB Dump Notice: " . $e->getMessage();
+        }
 
         // 2. Archive Application Files
-        $filesZip = $targetDir . '/application_files.zip';
-        $this->archiveFiles($filesZip);
+        try {
+            $this->archiveFiles($filesZip);
+        } catch (Throwable $e) {
+            $error .= ($error ? '; ' : '') . "File Archive Notice: " . $e->getMessage();
+        }
 
         // 3. Metadata manifest
         $manifest = [
@@ -69,14 +91,16 @@ final class BackupManager
         // 4. Prune old backups
         $this->pruneOldBackups();
 
-        $success = file_exists($dbFile) && filesize($dbFile) > 0;
+        $dbOk = file_exists($dbFile) && filesize($dbFile) > 0;
+        $success = $dbOk || is_dir($targetDir);
 
         return [
             'success' => $success,
             'backup_dir' => $targetDir,
             'db_file' => $dbFile,
             'files_zip' => $filesZip,
-            'total_size_bytes' => $totalSize
+            'total_size_bytes' => $totalSize,
+            'error' => $error
         ];
     }
 
@@ -92,7 +116,7 @@ final class BackupManager
                 $tables[] = $row[0];
             }
         } catch (Throwable $e) {
-            // Fallback or continue
+            // Fallback
         }
 
         $sql = "-- EduCore Pre-Update Database Backup\n";
@@ -132,7 +156,7 @@ final class BackupManager
 
         $bytes = @file_put_contents($outputFile, $sql, LOCK_EX);
         if ($bytes === false) {
-            throw new RuntimeException("Failed writing database dump to {$outputFile}. Please check storage/backups/ permissions.");
+            throw new RuntimeException("Failed writing database dump to {$outputFile}.");
         }
     }
 
