@@ -323,7 +323,7 @@ jobs:
           echo "Mandatory: ${MANDATORY_VALUE}"
           echo "SHA256:   ${SHA256}"
           echo "Download: ${DOWNLOAD_URL}"
-          echo "Target:   ${LIVE_URL%/}/api/index.php?route=v1/releases/register"
+          echo "Target:   ${LIVE_URL%/}/api/index.php?route=api/v1/releases/register"
 
           # Construct clean base URL without trailing slash
           CLEAN_LIVE_URL="${LIVE_URL%/}"
@@ -349,7 +349,7 @@ jobs:
             --silent \
             --show-error \
             --request POST \
-            "${CLEAN_LIVE_URL}/api/index.php?route=v1/releases/register" \
+            "${CLEAN_LIVE_URL}/api/index.php?route=api/v1/releases/register" \
             --header "Authorization: Bearer ${ADMIN_TOKEN}" \
             --header "Content-Type: application/json" \
             --data "${PAYLOAD}" \
