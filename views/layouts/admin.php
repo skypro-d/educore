@@ -21,18 +21,7 @@
     </div>
     <div class="nav-section">Main</div>
     <a class="nav-item <?= $current === 'dashboard' ? 'active' : '' ?>" href="<?= url('admin/dashboard') ?>"><i class="ti ti-layout-dashboard" data-fallback="D"></i> Dashboard</a>
-    <?php
-        $schoolInfo = SchoolContext::info();
-        $schoolDomain = trim($schoolInfo['domain'] ?? '');
-        if ($schoolDomain !== '' && $schoolDomain !== 'localhost' && $schoolDomain !== '127.0.0.1') {
-            $schoolWebUrl = 'https://' . $schoolDomain;
-        } else {
-            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $schoolWebUrl = $scheme . '://' . $host . BASE_URL . '/?school_code=' . urlencode($schoolInfo['school_code'] ?? '');
-        }
-    ?>
-    <a class="nav-item" href="<?= $schoolWebUrl ?>" target="_blank"><i class="ti ti-world" data-fallback="W"></i> View School Website</a>
+    <a class="nav-item" href="<?= e(school_website_url()) ?>" target="_blank" rel="noopener noreferrer"><i class="ti ti-world" data-fallback="W"></i> View School Website</a>
     <a class="nav-item <?= str_starts_with($current, 'applications') ? 'active' : '' ?>" href="<?= url('admin/applications') ?>"><i class="ti ti-forms" data-fallback="A"></i> Applications</a>
     <a class="nav-item" href="<?= url('admin/applications?status=Enrolled') ?>"><i class="ti ti-user-check" data-fallback="E"></i> Enrolled students</a>
     <a class="nav-item <?= $current === 'interviews' ? 'active' : '' ?>" href="<?= url('admin/interviews') ?>"><i class="ti ti-calendar-event" data-fallback="I"></i> Interviews</a>

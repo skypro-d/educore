@@ -163,6 +163,45 @@ function upload_file(string $field, string $folder, array $allowed): ?string
     return trim($folder, '/') . '/' . $name;
 }
 
+function school_website_url(): string
+{
+    // 1. Check custom school website URL configured by the school
+    $customWeb = trim(setting('school_website', setting('website', '')));
+    if ($customWeb !== '') {
+        if (preg_match('#^https?://#i', $customWeb)) {
+            return $customWeb;
+        }
+        if (str_starts_with($customWeb, '//')) {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https:' : 'http:';
+            return $scheme . $customWeb;
+        }
+        if (str_starts_with($customWeb, '/')) {
+            return url($customWeb);
+        }
+        if (str_contains($customWeb, '.')) {
+            return 'https://' . ltrim($customWeb, '/');
+        }
+        return url($customWeb);
+    }
+
+    // 2. Check school domain
+    $schoolInfo = SchoolContext::info();
+    $schoolDomain = trim($schoolInfo['domain'] ?? '');
+    if ($schoolDomain !== '' && $schoolDomain !== 'localhost' && $schoolDomain !== '127.0.0.1') {
+        return 'https://' . $schoolDomain;
+    }
+
+    // 3. Fallback to school portal landing page
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $schoolCode = $schoolInfo['school_code'] ?? '';
+    if (!empty($schoolCode)) {
+        return $scheme . '://' . $host . BASE_URL . '/?school_code=' . urlencode($schoolCode);
+    }
+
+    return url('');
+}
+
 function setting(string $key, string $default = ''): string
 {
     static $schoolRow = null;
@@ -184,6 +223,7 @@ function setting(string $key, string $default = ''): string
     $aliases = [
         'academic_year' => 'academic_session',
         'school_logo' => 'logo',
+        'school_website' => 'website',
     ];
     if (isset($aliases[$key]) && array_key_exists($aliases[$key], $schoolRow) && $schoolRow[$aliases[$key]] !== null && $schoolRow[$aliases[$key]] !== '') {
         return (string) $schoolRow[$aliases[$key]];
@@ -212,11 +252,26 @@ function settings_map(): array
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row) {
             $map = $row;
+            if (!empty($row['website']) && empty($map['school_website'])) {
+                $map['school_website'] = $row['website'];
+            }
+            if (!empty($row['logo']) && empty($map['school_logo'])) {
+                $map['school_logo'] = $row['logo'];
+            }
+            if (!empty($row['academic_session']) && empty($map['academic_year'])) {
+                $map['academic_year'] = $row['academic_session'];
+            }
         }
 
         $stmtApp = Database::connect()->query("SELECT setting_key, setting_value FROM app_configs");
         foreach ($stmtApp->fetchAll(PDO::FETCH_ASSOC) as $cfg) {
             $map[$cfg['setting_key']] = $cfg['setting_value'];
+        }
+
+        if (!empty($map['school_website']) && empty($map['website'])) {
+            $map['website'] = $map['school_website'];
+        } elseif (!empty($map['website']) && empty($map['school_website'])) {
+            $map['school_website'] = $map['website'];
         }
 
         return $map;

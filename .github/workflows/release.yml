@@ -383,24 +383,7 @@ jobs:
           fi
           echo "Connectivity check passed (HTTP connection to ${TARGET_HOST} verified)."
 
-          # ── Build JSON payload ─────────────────────────────────────────────
-          PAYLOAD=$(VERSION="${VERSION}" DOWNLOAD_URL="${DOWNLOAD_URL}" PACKAGE_NAME="${PACKAGE_NAME}" SHA256="${SHA256}" SIGNATURE="${SIGNATURE}" CHANNEL="${CHANNEL}" MANDATORY_VALUE="${MANDATORY_VALUE}" php -r '
-            $data = [
-                "version"           => ltrim(getenv("VERSION"), "v"),
-                "download_url"      => getenv("DOWNLOAD_URL"),
-                "download_file"     => getenv("PACKAGE_NAME"),
-                "sha256"            => getenv("SHA256"),
-                "signature"         => getenv("SIGNATURE"),
-                "release_channel"   => getenv("CHANNEL"),
-                "mandatory"         => (int) getenv("MANDATORY_VALUE"),
-                "min_php_version"   => "8.3.0",
-                "min_mysql_version" => "8.0.0",
-                "release_notes"     => "Automated build and release via GitHub Actions."
-            ];
-            echo json_encode($data, JSON_UNESCAPED_SLASHES);
-          ')
-
-          # ── Execute Registration Request ───────────────────────────────────
+          # ── Execute Registration & Package Upload ──────────────────────────
           CURL_OUT=$(mktemp)
           CURL_ERR=$(mktemp)
 
@@ -409,12 +392,20 @@ jobs:
             --silent \
             --show-error \
             --connect-timeout 15 \
-            --max-time 60 \
+            --max-time 180 \
             --request POST \
             "${REGISTER_URL}" \
             --header "Authorization: Bearer ${ADMIN_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "${PAYLOAD}" \
+            --form "package=@${PACKAGE_NAME}" \
+            --form "version=${VERSION}" \
+            --form "download_file=${PACKAGE_NAME}" \
+            --form "sha256=${SHA256}" \
+            --form "signature=${SIGNATURE}" \
+            --form "release_channel=${CHANNEL}" \
+            --form "mandatory=${MANDATORY_VALUE}" \
+            --form "min_php_version=8.3.0" \
+            --form "min_mysql_version=8.0.0" \
+            --form "release_notes=Automated build and release via GitHub Actions." \
             --write-out "%{http_code}" \
             --output "${CURL_OUT}" \
             2> "${CURL_ERR}"

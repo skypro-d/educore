@@ -410,24 +410,33 @@ final class AdminController
             $stmtAppConfig->execute([$key, trim((string) $value)]);
         }
 
+        $website = trim((string) ($postSettings['school_website'] ?? $postSettings['website'] ?? ''));
+        $motto   = trim((string) ($postSettings['school_motto'] ?? $postSettings['motto'] ?? ''));
+
+        // Ensure both aliases are stored in app_configs
+        $stmtAppConfig->execute(['school_website', $website]);
+        $stmtAppConfig->execute(['website', $website]);
+
         $stmtSchool = $this->db->prepare(
             'UPDATE school_settings 
              SET school_name = COALESCE(NULLIF(?, ""), school_name),
+                 motto = ?,
                  email = COALESCE(NULLIF(?, ""), email),
                  phone = COALESCE(NULLIF(?, ""), phone),
                  address = COALESCE(NULLIF(?, ""), address),
                  principal_name = COALESCE(NULLIF(?, ""), principal_name),
-                 website = COALESCE(NULLIF(?, ""), website),
+                 website = ?,
                  academic_session = COALESCE(NULLIF(?, ""), academic_session)
              WHERE id = 1'
         );
         $stmtSchool->execute([
             $postSettings['school_name'] ?? '',
+            $motto,
             $postSettings['school_email'] ?? '',
             $postSettings['school_phone'] ?? '',
             $postSettings['school_address'] ?? '',
             $postSettings['principal_name'] ?? '',
-            $postSettings['school_website'] ?? '',
+            $website,
             $postSettings['academic_year'] ?? ''
         ]);
 
