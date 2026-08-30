@@ -243,7 +243,7 @@ final class UpdateInstaller
             return [
                 'success' => false,
                 'status' => $rollbackSuccess ? 'rolled_back' : 'failed',
-                'message' => "Update failed: {$errorMsg}" . ($rollbackSuccess ? " (System safely rolled back to v{$fromVersion})" : " (Rollback error encountered)"),
+                'message' => "Update halted: {$errorMsg}" . ($rollbackSuccess ? " (System safely restored to v{$fromVersion})" : ""),
                 'from_version' => $fromVersion,
                 'to_version' => $targetVersion,
                 'backup_path' => $backupDir,

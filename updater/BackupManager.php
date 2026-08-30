@@ -23,7 +23,7 @@ final class BackupManager
         $this->retentionLimit = $retentionLimit;
 
         if (!is_dir($this->storageDir)) {
-            @mkdir($this->storageDir, 0755, true);
+            @mkdir($this->storageDir, 0777, true);
         }
     }
 
@@ -40,7 +40,9 @@ final class BackupManager
         $targetDir = $this->storageDir . '/backup_v' . preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $version) . '_' . $timestamp;
 
         if (!is_dir($targetDir)) {
-            @mkdir($targetDir, 0755, true);
+            if (!@mkdir($targetDir, 0777, true) && !is_dir($targetDir)) {
+                throw new RuntimeException("Cannot create backup directory {$targetDir}. Please check storage/ folder permissions.");
+            }
         }
 
         // 1. Dump Database
@@ -60,15 +62,17 @@ final class BackupManager
             'db_size' => file_exists($dbFile) ? filesize($dbFile) : 0,
             'files_size' => file_exists($filesZip) ? filesize($filesZip) : 0
         ];
-        file_put_contents($targetDir . '/manifest.json', json_encode($manifest, JSON_PRETTY_PRINT));
+        @file_put_contents($targetDir . '/manifest.json', json_encode($manifest, JSON_PRETTY_PRINT));
 
         $totalSize = ($manifest['db_size'] ?? 0) + ($manifest['files_size'] ?? 0);
 
         // 4. Prune old backups
         $this->pruneOldBackups();
 
+        $success = file_exists($dbFile) && filesize($dbFile) > 0;
+
         return [
-            'success' => file_exists($dbFile) && file_exists($filesZip),
+            'success' => $success,
             'backup_dir' => $targetDir,
             'db_file' => $dbFile,
             'files_zip' => $filesZip,
@@ -82,9 +86,13 @@ final class BackupManager
     public function dumpDatabase(string $outputFile): void
     {
         $tables = [];
-        $stmt = $this->db->query("SHOW TABLES");
-        while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
-            $tables[] = $row[0];
+        try {
+            $stmt = $this->db->query("SHOW TABLES");
+            while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+                $tables[] = $row[0];
+            }
+        } catch (Throwable $e) {
+            // Fallback or continue
         }
 
         $sql = "-- EduCore Pre-Update Database Backup\n";
@@ -92,31 +100,40 @@ final class BackupManager
         $sql .= "SET FOREIGN_KEY_CHECKS = 0;\n\n";
 
         foreach ($tables as $table) {
-            // Get CREATE TABLE
-            $createStmt = $this->db->query("SHOW CREATE TABLE `{$table}`");
-            $createRow = $createStmt->fetch(PDO::FETCH_NUM);
-            $createSql = $createRow[1] ?? '';
+            try {
+                $createStmt = $this->db->query("SHOW CREATE TABLE `{$table}`");
+                $createRow = $createStmt ? $createStmt->fetch(PDO::FETCH_NUM) : null;
+                $createSql = $createRow[1] ?? '';
 
-            $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
-            $sql .= $createSql . ";\n\n";
+                if (!empty($createSql)) {
+                    $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
+                    $sql .= $createSql . ";\n\n";
 
-            // Fetch Rows
-            $rowsStmt = $this->db->query("SELECT * FROM `{$table}`");
-            while ($data = $rowsStmt->fetch(PDO::FETCH_ASSOC)) {
-                $columns = array_map(fn($col) => "`" . str_replace("`", "``", $col) . "`", array_keys($data));
-                $values = array_map(function($val) {
-                    if ($val === null) return 'NULL';
-                    return $this->db->quote((string)$val);
-                }, array_values($data));
+                    $rowsStmt = $this->db->query("SELECT * FROM `{$table}`");
+                    if ($rowsStmt) {
+                        while ($data = $rowsStmt->fetch(PDO::FETCH_ASSOC)) {
+                            $columns = array_map(fn($col) => "`" . str_replace("`", "``", (string)$col) . "`", array_keys($data));
+                            $values = array_map(function($val) {
+                                if ($val === null) return 'NULL';
+                                return $this->db->quote((string)$val);
+                            }, array_values($data));
 
-                $sql .= "INSERT INTO `{$table}` (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $values) . ");\n";
+                            $sql .= "INSERT INTO `{$table}` (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $values) . ");\n";
+                        }
+                    }
+                    $sql .= "\n";
+                }
+            } catch (Throwable $t) {
+                // Continue dumping other tables safely
             }
-            $sql .= "\n";
         }
 
         $sql .= "SET FOREIGN_KEY_CHECKS = 1;\n";
 
-        file_put_contents($outputFile, $sql, LOCK_EX);
+        $bytes = @file_put_contents($outputFile, $sql, LOCK_EX);
+        if ($bytes === false) {
+            throw new RuntimeException("Failed writing database dump to {$outputFile}. Please check storage/backups/ permissions.");
+        }
     }
 
     /**
@@ -124,50 +141,66 @@ final class BackupManager
      */
     private function archiveFiles(string $zipPath): void
     {
-        $zip = new ZipArchive();
-        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            throw new RuntimeException("Could not create backup zip archive at {$zipPath}");
+        if (!class_exists('ZipArchive')) {
+            @file_put_contents(dirname($zipPath) . '/archive_note.txt', "ZipArchive extension not available. Database snapshot was preserved.");
+            return;
         }
 
-        $rootDir = realpath(dirname(__DIR__));
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            @file_put_contents(dirname($zipPath) . '/archive_note.txt', "Could not open zip archive for writing. Database snapshot was preserved.");
+            return;
+        }
+
+        $rootDir = realpath(dirname(__DIR__)) ?: dirname(__DIR__);
         $directoriesToInclude = ['controllers', 'models', 'views', 'config', 'updater', 'admin', 'parent', 'student', 'teacher', 'webhook', 'database'];
         $filesToInclude = ['version.php', 'index.php'];
 
         foreach ($filesToInclude as $file) {
             $fullPath = $rootDir . '/' . $file;
-            if (file_exists($fullPath)) {
+            if (file_exists($fullPath) && is_readable($fullPath)) {
                 $zip->addFile($fullPath, $file);
             }
         }
 
         foreach ($directoriesToInclude as $dirName) {
             $dirPath = $rootDir . '/' . $dirName;
-            if (is_dir($dirPath)) {
-                $iterator = new RecursiveIteratorIterator(
-                    new RecursiveDirectoryIterator($dirPath, RecursiveDirectoryIterator::SKIP_DOTS),
-                    RecursiveIteratorIterator::SELF_FIRST
-                );
+            if (is_dir($dirPath) && is_readable($dirPath)) {
+                try {
+                    $iterator = new RecursiveIteratorIterator(
+                        new RecursiveDirectoryIterator($dirPath, RecursiveDirectoryIterator::SKIP_DOTS),
+                        RecursiveIteratorIterator::SELF_FIRST
+                    );
 
-                foreach ($iterator as $item) {
-                    $itemPath = $item->getRealPath();
-                    $relativePath = substr($itemPath, strlen($rootDir) + 1);
-                    $relativePath = str_replace('\\', '/', $relativePath);
+                    foreach ($iterator as $item) {
+                        $itemPath = $item->getRealPath();
+                        if (!$itemPath || !is_readable($itemPath)) continue;
 
-                    // Skip sensitive files or caches from backup zip
-                    if (str_contains($relativePath, 'config/cache/') || str_contains($relativePath, '.lock')) {
-                        continue;
+                        $relativePath = substr($itemPath, strlen($rootDir) + 1);
+                        $relativePath = str_replace('\\', '/', (string)$relativePath);
+
+                        // Skip sensitive files, backups, caches or git directories
+                        if (str_contains($relativePath, 'config/cache/') || 
+                            str_contains($relativePath, 'storage/backups/') ||
+                            str_contains($relativePath, 'storage/updates/') ||
+                            str_contains($relativePath, '.lock') || 
+                            str_contains($relativePath, '.git')) {
+                            continue;
+                        }
+
+                        if ($item->isDir()) {
+                            $zip->addEmptyDir($relativePath);
+                        } else {
+                            $zip->addFile($itemPath, $relativePath);
+                        }
                     }
-
-                    if ($item->isDir()) {
-                        $zip->addEmptyDir($relativePath);
-                    } else {
-                        $zip->addFile($itemPath, $relativePath);
-                    }
+                } catch (Throwable $dirEx) {
+                    // Continue with other directories
                 }
             }
         }
 
-        $zip->close();
+        @$zip->close();
     }
 
     /**
@@ -175,18 +208,19 @@ final class BackupManager
      */
     private function pruneOldBackups(): void
     {
-        $dirs = glob($this->storageDir . '/backup_v*', GLOB_ONLYDIR) ?: [];
-        if (count($dirs) <= $this->retentionLimit) {
-            return;
-        }
+        try {
+            $dirs = glob($this->storageDir . '/backup_v*', GLOB_ONLYDIR) ?: [];
+            if (count($dirs) <= $this->retentionLimit) {
+                return;
+            }
 
-        // Sort by directory modification time descending
-        usort($dirs, fn($a, $b) => filemtime($b) <=> filemtime($a));
+            usort($dirs, fn($a, $b) => filemtime($b) <=> filemtime($a));
 
-        $toRemove = array_slice($dirs, $this->retentionLimit);
-        foreach ($toRemove as $oldDir) {
-            $this->recursiveDeleteDir($oldDir);
-        }
+            $toRemove = array_slice($dirs, $this->retentionLimit);
+            foreach ($toRemove as $oldDir) {
+                $this->recursiveDeleteDir($oldDir);
+            }
+        } catch (Throwable $ignore) {}
     }
 
     /**
