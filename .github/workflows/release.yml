@@ -315,65 +315,111 @@ jobs:
             MANDATORY_VALUE=0
           fi
 
+          # ── Normalize Base URL (strip paths, query strings, and trailing slashes) ──
+          CLEAN_LIVE_URL=$(php -r '
+            $raw = getenv("LIVE_URL");
+            $parts = parse_url(trim($raw));
+            $scheme = $parts["scheme"] ?? "http";
+            $host = $parts["host"] ?? "";
+            $port = isset($parts["port"]) ? ":" . $parts["port"] : "";
+            if (empty($host)) {
+                $parts = parse_url("http://" . ltrim(trim($raw), "/"));
+                $scheme = "http";
+                $host = $parts["host"] ?? "";
+                $port = isset($parts["port"]) ? ":" . $parts["port"] : "";
+            }
+            echo rtrim("{$scheme}://{$host}{$port}", "/");
+          ')
+
+          TARGET_URL="${CLEAN_LIVE_URL}/api/index.php?route=api/v1/releases/register"
+
+          # Extract host for DNS diagnostics
+          TARGET_HOST=$(php -r 'echo parse_url(getenv("CLEAN_LIVE_URL"), PHP_URL_HOST) ?? "";')
+
           echo "======================================"
           echo "Registering Release with EduCore Live"
           echo "======================================"
-          echo "Version:  ${VERSION}"
-          echo "Channel:  ${CHANNEL}"
-          echo "Mandatory: ${MANDATORY_VALUE}"
-          echo "SHA256:   ${SHA256}"
-          echo "Download: ${DOWNLOAD_URL}"
-          echo "Target:   ${LIVE_URL%/}/api/index.php?route=api/v1/releases/register"
+          echo "Version:     ${VERSION}"
+          echo "Channel:     ${CHANNEL}"
+          echo "Mandatory:   ${MANDATORY_VALUE}"
+          echo "SHA256:      ${SHA256}"
+          echo "Download:    ${DOWNLOAD_URL}"
+          echo "Target Host: ${TARGET_HOST}"
+          echo "Target URL:  ${TARGET_URL}"
+          echo "======================================"
 
-          # Construct clean base URL without trailing slash
-          CLEAN_LIVE_URL="${LIVE_URL%/}"
-
-          # Build JSON payload — SHA256 is the EXACT hash of the uploaded ZIP
+          # ── Build JSON payload ─────────────────────────────────────────────
           PAYLOAD=$(php -r '
             $data = [
-                "version"          => ltrim(getenv("VERSION"), "v"),
-                "download_url"     => getenv("DOWNLOAD_URL"),
-                "download_file"    => getenv("PACKAGE_NAME"),
-                "sha256"           => getenv("SHA256"),
-                "signature"        => getenv("SIGNATURE"),
-                "release_channel"  => getenv("CHANNEL"),
-                "mandatory"        => (int) getenv("MANDATORY_VALUE"),
-                "min_php_version"  => "8.3.0",
+                "version"           => ltrim(getenv("VERSION"), "v"),
+                "download_url"      => getenv("DOWNLOAD_URL"),
+                "download_file"     => getenv("PACKAGE_NAME"),
+                "sha256"            => getenv("SHA256"),
+                "signature"         => getenv("SIGNATURE"),
+                "release_channel"   => getenv("CHANNEL"),
+                "mandatory"         => (int) getenv("MANDATORY_VALUE"),
+                "min_php_version"   => "8.3.0",
                 "min_mysql_version" => "8.0.0",
-                "release_notes"    => "Automated build and release via GitHub Actions."
+                "release_notes"     => "Automated build and release via GitHub Actions."
             ];
             echo json_encode($data, JSON_UNESCAPED_SLASHES);
           ')
 
-          HTTP_RESPONSE=$(curl \
+          # ── Execute Registration Request ───────────────────────────────────
+          CURL_OUT=$(mktemp)
+          CURL_ERR=$(mktemp)
+
+          HTTP_STATUS=$(curl \
             --silent \
             --show-error \
+            --insecure \
+            --connect-timeout 15 \
+            --max-time 60 \
             --request POST \
-            "${CLEAN_LIVE_URL}/api/index.php?route=api/v1/releases/register" \
+            "${TARGET_URL}" \
             --header "Authorization: Bearer ${ADMIN_TOKEN}" \
             --header "Content-Type: application/json" \
             --data "${PAYLOAD}" \
-            --write-out "\n%{http_code}" \
+            --write-out "%{http_code}" \
+            --output "${CURL_OUT}" \
+            2> "${CURL_ERR}" || echo "$?" > /tmp/curl_exit_code
           )
 
-          HTTP_BODY=$(echo "${HTTP_RESPONSE}" | sed '$d')
-          HTTP_STATUS=$(echo "${HTTP_RESPONSE}" | tail -n1)
+          CURL_EXIT_CODE=0
+          if [ -f /tmp/curl_exit_code ]; then
+            CURL_EXIT_CODE=$(cat /tmp/curl_exit_code)
+            rm -f /tmp/curl_exit_code
+          fi
+
+          HTTP_BODY=$(cat "${CURL_OUT}")
+          CURL_ERROR_MSG=$(cat "${CURL_ERR}")
+          rm -f "${CURL_OUT}" "${CURL_ERR}"
 
           echo ""
-          echo "Live Server Response (HTTP ${HTTP_STATUS}):"
+          echo "Live Server Response (HTTP ${HTTP_STATUS}, curl exit: ${CURL_EXIT_CODE}):"
+          if [ -n "${CURL_ERROR_MSG}" ]; then
+            echo "curl notice/error: ${CURL_ERROR_MSG}"
+          fi
           echo "${HTTP_BODY}"
 
-          # Robust JSON response validation
+          # ── Robust JSON response validation ────────────────────────────────
           php -r '
             $raw = getenv("HTTP_BODY");
             $httpStatus = (int)getenv("HTTP_STATUS");
+            $curlExit = (int)getenv("CURL_EXIT_CODE");
+            $curlErr = getenv("CURL_ERROR_MSG");
             $expectedVersion = ltrim(getenv("VERSION"), "v");
             $expectedSha256 = strtolower(getenv("SHA256"));
             $expectedChannel = getenv("CHANNEL");
 
+            if ($curlExit !== 0 || $httpStatus === 0) {
+                fwrite(STDERR, "::error ::Network connection to live server failed (HTTP {$httpStatus}, curl exit code {$curlExit}): {$curlErr}\n");
+                exit(1);
+            }
+
             $data = json_decode($raw, true);
             if (!is_array($data)) {
-                fwrite(STDERR, "::error ::Live server returned non-JSON response (HTTP {$httpStatus}).\n");
+                fwrite(STDERR, "::error ::Live server returned non-JSON response (HTTP {$httpStatus}): " . substr($raw, 0, 300) . "\n");
                 exit(1);
             }
 
