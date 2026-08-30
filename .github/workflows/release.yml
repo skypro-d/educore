@@ -315,26 +315,31 @@ jobs:
             MANDATORY_VALUE=0
           fi
 
-          # ── Normalize Base URL (strip paths, query strings, and trailing slashes) ──
-          CLEAN_LIVE_URL=$(php -r '
-            $raw = getenv("LIVE_URL");
-            $parts = parse_url(trim($raw));
-            $scheme = $parts["scheme"] ?? "http";
-            $host = $parts["host"] ?? "";
-            $port = isset($parts["port"]) ? ":" . $parts["port"] : "";
-            if (empty($host)) {
-                $parts = parse_url("http://" . ltrim(trim($raw), "/"));
-                $scheme = "http";
-                $host = $parts["host"] ?? "";
-                $port = isset($parts["port"]) ? ":" . $parts["port"] : "";
-            }
-            echo rtrim("{$scheme}://{$host}{$port}", "/");
-          ')
+          # ── Normalize Base URL (strip trailing slashes safely) ─────────────
+          RAW_URL=$(echo "${EDUCORE_LIVE_URL}" | xargs)
+          BASE_URL="${RAW_URL%/}"
+          while [[ "${BASE_URL}" == */ ]]; do
+            BASE_URL="${BASE_URL%/}"
+          done
 
-          TARGET_URL="${CLEAN_LIVE_URL}/api/index.php?route=api/v1/releases/register"
+          # ── Validate URL Scheme & Structure ────────────────────────────────
+          if [[ ! "${BASE_URL}" =~ ^https?://[a-zA-Z0-9.-]+ ]]; then
+            echo "::error ::Invalid EDUCORE_LIVE_URL format: '${BASE_URL}'. Must begin with https:// (or http://) followed by a valid host."
+            exit 1
+          fi
 
-          # Extract host for DNS diagnostics
-          TARGET_HOST=$(php -r 'echo parse_url(getenv("CLEAN_LIVE_URL"), PHP_URL_HOST) ?? "";')
+          if [[ "${BASE_URL}" =~ ^http:// ]]; then
+            echo "::warning ::EDUCORE_LIVE_URL uses unencrypted HTTP. HTTPS is strongly recommended for transmitting Authorization Bearer tokens in production."
+          fi
+
+          # ── Extract Target Host for DNS diagnostics (pure bash) ────────────
+          HOST_PART="${BASE_URL#*://}"
+          HOST_PART="${HOST_PART%%/*}"
+          TARGET_HOST="${HOST_PART%%:*}"
+
+          # ── Construct Registration & Health-Check Endpoints ────────────────
+          REGISTER_URL="${BASE_URL}/index.php?route=api/v1/releases/register"
+          CHECK_URL="${BASE_URL}/index.php?route=api/v1/updates/check&release_channel=stable"
 
           echo "======================================"
           echo "Registering Release with EduCore Live"
@@ -344,12 +349,42 @@ jobs:
           echo "Mandatory:   ${MANDATORY_VALUE}"
           echo "SHA256:      ${SHA256}"
           echo "Download:    ${DOWNLOAD_URL}"
+          echo "Base URL:    ${BASE_URL}"
           echo "Target Host: ${TARGET_HOST}"
-          echo "Target URL:  ${TARGET_URL}"
+          echo "Target URL:  ${REGISTER_URL}"
           echo "======================================"
 
+          # ── Pre-registration Connectivity & Health Check ───────────────────
+          echo "Testing connectivity to live server (${TARGET_HOST})..."
+          HEALTH_OUT=$(mktemp)
+          HEALTH_ERR=$(mktemp)
+          set +e
+          curl \
+            --silent \
+            --show-error \
+            --connect-timeout 15 \
+            --max-time 30 \
+            --output "${HEALTH_OUT}" \
+            "${CHECK_URL}" \
+            2> "${HEALTH_ERR}"
+          HEALTH_EXIT=$?
+          set -e
+
+          HEALTH_BODY=$(cat "${HEALTH_OUT}" 2>/dev/null || echo "")
+          HEALTH_ERR_MSG=$(cat "${HEALTH_ERR}" 2>/dev/null || echo "")
+          rm -f "${HEALTH_OUT}" "${HEALTH_ERR}"
+
+          if [ ${HEALTH_EXIT} -ne 0 ]; then
+            echo "::error ::Live server connectivity check failed (curl exit code ${HEALTH_EXIT}) for host '${TARGET_HOST}'."
+            if [ -n "${HEALTH_ERR_MSG}" ]; then
+              echo "::error ::curl error: ${HEALTH_ERR_MSG}"
+            fi
+            exit 1
+          fi
+          echo "Connectivity check passed (HTTP connection to ${TARGET_HOST} verified)."
+
           # ── Build JSON payload ─────────────────────────────────────────────
-          PAYLOAD=$(php -r '
+          PAYLOAD=$(VERSION="${VERSION}" DOWNLOAD_URL="${DOWNLOAD_URL}" PACKAGE_NAME="${PACKAGE_NAME}" SHA256="${SHA256}" SIGNATURE="${SIGNATURE}" CHANNEL="${CHANNEL}" MANDATORY_VALUE="${MANDATORY_VALUE}" php -r '
             $data = [
                 "version"           => ltrim(getenv("VERSION"), "v"),
                 "download_url"      => getenv("DOWNLOAD_URL"),
@@ -369,30 +404,26 @@ jobs:
           CURL_OUT=$(mktemp)
           CURL_ERR=$(mktemp)
 
+          set +e
           HTTP_STATUS=$(curl \
             --silent \
             --show-error \
-            --insecure \
             --connect-timeout 15 \
             --max-time 60 \
             --request POST \
-            "${TARGET_URL}" \
+            "${REGISTER_URL}" \
             --header "Authorization: Bearer ${ADMIN_TOKEN}" \
             --header "Content-Type: application/json" \
             --data "${PAYLOAD}" \
             --write-out "%{http_code}" \
             --output "${CURL_OUT}" \
-            2> "${CURL_ERR}" || echo "$?" > /tmp/curl_exit_code
+            2> "${CURL_ERR}"
           )
+          CURL_EXIT_CODE=$?
+          set -e
 
-          CURL_EXIT_CODE=0
-          if [ -f /tmp/curl_exit_code ]; then
-            CURL_EXIT_CODE=$(cat /tmp/curl_exit_code)
-            rm -f /tmp/curl_exit_code
-          fi
-
-          HTTP_BODY=$(cat "${CURL_OUT}")
-          CURL_ERROR_MSG=$(cat "${CURL_ERR}")
+          HTTP_BODY=$(cat "${CURL_OUT}" 2>/dev/null || echo "")
+          CURL_ERROR_MSG=$(cat "${CURL_ERR}" 2>/dev/null || echo "")
           rm -f "${CURL_OUT}" "${CURL_ERR}"
 
           echo ""
@@ -403,6 +434,13 @@ jobs:
           echo "${HTTP_BODY}"
 
           # ── Robust JSON response validation ────────────────────────────────
+          HTTP_BODY="${HTTP_BODY}" \
+          HTTP_STATUS="${HTTP_STATUS}" \
+          CURL_EXIT_CODE="${CURL_EXIT_CODE}" \
+          CURL_ERROR_MSG="${CURL_ERROR_MSG}" \
+          VERSION="${VERSION}" \
+          SHA256="${SHA256}" \
+          CHANNEL="${CHANNEL}" \
           php -r '
             $raw = getenv("HTTP_BODY");
             $httpStatus = (int)getenv("HTTP_STATUS");
