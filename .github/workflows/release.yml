@@ -332,7 +332,7 @@ jobs:
             --header "Content-Type: application/json" \
             --data "$(php -r '
               $data = [
-                  "version" => getenv("VERSION"),
+                  "version" => ltrim(getenv("VERSION"), "v"),
                   "download_url" => getenv("DOWNLOAD_URL"),
                   "download_file" => getenv("PACKAGE_NAME"),
                   "sha256" => getenv("SHA256"),
