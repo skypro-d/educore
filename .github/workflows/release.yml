@@ -1,0 +1,356 @@
+
+name: EduCore Automated Release & Live Server Distribution
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to release (e.g. 1.0.2)'
+        required: true
+        default: '1.0.2'
+
+      channel:
+        description: 'Release Channel'
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+          - canary
+        default: 'stable'
+
+      mandatory:
+        description: 'Flag as mandatory security update'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build, Verify, Sign & Distribute Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # ---------------------------------------------------------
+      # 1. CHECKOUT
+      # ---------------------------------------------------------
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # 2. PHP
+      # ---------------------------------------------------------
+      - name: Setup PHP 8.3 Environment
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo, pdo_mysql, curl, openssl, json, mbstring, gd, zip
+          coverage: none
+
+      # ---------------------------------------------------------
+      # 3. PHP SYNTAX CHECK
+      # ---------------------------------------------------------
+      - name: Syntax Linting & Verification
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "EduCore PHP Syntax Verification"
+          echo "======================================"
+
+          find . \
+            -type f \
+            -name "*.php" \
+            ! -path "./storage/*" \
+            ! -path "./uploads/*" \
+            ! -path "./vendor/*" \
+            -print0 |
+          xargs -0 -n 1 -P 4 php -l
+
+          echo ""
+          echo "PHP syntax verification completed successfully."
+
+      # ---------------------------------------------------------
+      # 4. EXTRACT VERSION / BUILD METADATA
+      # ---------------------------------------------------------
+      - name: Extract Version & Build Metadata
+        id: vars
+        shell: bash
+        run: |
+          set -e
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW_VER="${{ github.event.inputs.version }}"
+            CHANNEL="${{ github.event.inputs.channel }}"
+            MANDATORY="${{ github.event.inputs.mandatory }}"
+          else
+            RAW_VER="${GITHUB_REF_NAME#v}"
+            CHANNEL="stable"
+            MANDATORY="false"
+          fi
+
+          # Validate semantic version format
+          if ! [[ "$RAW_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: Invalid version: $RAW_VER"
+            echo "Expected format: 1.0.0 or 1.0.0-beta.1"
+            exit 1
+          fi
+
+          echo "VERSION=${RAW_VER}" >> "$GITHUB_OUTPUT"
+          echo "CHANNEL=${CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "MANDATORY=${MANDATORY}" >> "$GITHUB_OUTPUT"
+          echo "PACKAGE_NAME=EduCore-v${RAW_VER}.zip" >> "$GITHUB_OUTPUT"
+
+          echo ""
+          echo "Version: ${RAW_VER}"
+          echo "Channel: ${CHANNEL}"
+          echo "Mandatory: ${MANDATORY}"
+
+      # ---------------------------------------------------------
+      # 5. PREPARE DISTRIBUTION PACKAGE
+      # ---------------------------------------------------------
+      - name: Prepare Clean Distribution Package
+        shell: bash
+        run: |
+          set -e
+
+          PKG_NAME="${{ steps.vars.outputs.PACKAGE_NAME }}"
+
+          echo "======================================"
+          echo "Preparing EduCore Distribution"
+          echo "======================================"
+
+          mkdir -p build_tmp
+
+          rsync -av \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.env' \
+            --exclude 'uploads/*' \
+            --exclude 'logs/*' \
+            --exclude 'storage/backups/*' \
+            --exclude 'storage/updates/*' \
+            --exclude 'config/cache/*' \
+            --exclude 'tests' \
+            --exclude 'scratch' \
+            --exclude 'install/installation.lock' \
+            --exclude 'build_tmp' \
+            --exclude '*.zip' \
+            ./ build_tmp/
+
+          cat << 'EOF' > build_tmp/version.php
+          <?php
+          declare(strict_types=1);
+
+          if (!defined('EDUCORE_VERSION')) {
+              define('EDUCORE_VERSION', '${{ steps.vars.outputs.VERSION }}');
+          }
+
+          if (!defined('EDUCORE_BUILD')) {
+              define('EDUCORE_BUILD', date('Ymd.His'));
+          }
+
+          if (!defined('EDUCORE_MIN_PHP')) {
+              define('EDUCORE_MIN_PHP', '8.3.0');
+          }
+
+          if (!defined('EDUCORE_MIN_MYSQL')) {
+              define('EDUCORE_MIN_MYSQL', '8.0.0');
+          }
+
+          if (!defined('EDUCORE_DEFAULT_CHANNEL')) {
+              define('EDUCORE_DEFAULT_CHANNEL', '${{ steps.vars.outputs.CHANNEL }}');
+          }
+          EOF
+
+          cd build_tmp
+
+          zip -r "../${PKG_NAME}" . \
+            -x "*.git*" \
+            -x "*storage/backups/*" \
+            -x "*storage/updates/*"
+
+          cd ..
+
+          rm -rf build_tmp
+
+          echo ""
+          echo "Package created:"
+          ls -lh "${PKG_NAME}"
+
+      # ---------------------------------------------------------
+      # 6. SHA256 + SIGNATURE
+      # ---------------------------------------------------------
+      - name: Compute Cryptographic SHA256 & Signature
+        id: crypto
+        shell: bash
+        env:
+          SIGNING_SECRET: ${{ secrets.SKYSAVING_SECRET_KEY }}
+        run: |
+          set -e
+
+          PKG_NAME="${{ steps.vars.outputs.PACKAGE_NAME }}"
+
+          SHA256_HASH=$(sha256sum "${PKG_NAME}" | awk '{print $1}')
+
+          echo "SHA256=${SHA256_HASH}" >> "$GITHUB_OUTPUT"
+
+          echo "Package SHA256:"
+          echo "${SHA256_HASH}"
+
+          SECRET_KEY="${SIGNING_SECRET}"
+          if [ -z "${SECRET_KEY}" ]; then
+            echo "::warning ::SKYSAVING_SECRET_KEY secret not found in GitHub repository settings. Using platform default signing key."
+            SECRET_KEY="skysavingtech_secret_key_2026_super_secure_hash"
+          fi
+
+          VERSION="${{ steps.vars.outputs.VERSION }}"
+
+          SIGNATURE=$(SECRET_KEY="${SECRET_KEY}" VERSION="${VERSION}" SHA256_HASH="${SHA256_HASH}" php -r '
+            $secret = getenv("SECRET_KEY");
+            $version = getenv("VERSION");
+            $sha256 = getenv("SHA256_HASH");
+
+            echo hash_hmac(
+                "sha256",
+                $version . $sha256,
+                $secret
+            );
+          ')
+
+          echo "SIGNATURE=${SIGNATURE}" >> "$GITHUB_OUTPUT"
+
+          echo "Cryptographic signature generated successfully."
+
+      # ---------------------------------------------------------
+      # 7. CREATE GITHUB RELEASE
+      # ---------------------------------------------------------
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', steps.vars.outputs.VERSION) || github.ref_name }}
+          name: EduCore v${{ steps.vars.outputs.VERSION }}
+          body: |
+            ## EduCore Software Release v${{ steps.vars.outputs.VERSION }}
+
+            **Release Channel:** `${{ steps.vars.outputs.CHANNEL }}`
+            **Minimum PHP:** `8.3.0+`
+            **Minimum MySQL:** `8.0.0+`
+            **Mandatory Upgrade:** `${{ steps.vars.outputs.MANDATORY }}`
+
+            ### Package Verification
+
+            - **Package:** `${{ steps.vars.outputs.PACKAGE_NAME }}`
+            - **SHA256 Checksum:** `${{ steps.crypto.outputs.SHA256 }}`
+            - **Digital Signature:** `${{ steps.crypto.outputs.SIGNATURE }}`
+
+            ### Automatic Fleet Distribution
+
+            Connected EduCore school installations can receive release notifications from the EduCore Live Server.
+
+            Schools can then upgrade through the EduCore Admin Dashboard or their scheduled update process.
+
+            ### Release Information
+
+            This release was automatically built and verified by GitHub Actions.
+          files: |
+            ${{ steps.vars.outputs.PACKAGE_NAME }}
+          draft: false
+          prerelease: ${{ steps.vars.outputs.CHANNEL != 'stable' }}
+
+      # ---------------------------------------------------------
+      # 8. REGISTER RELEASE WITH EDUCORE LIVE SERVER
+      # ---------------------------------------------------------
+      - name: Register Release on EduCore Live Server
+        env:
+          EDUCORE_LIVE_URL: ${{ secrets.EDUCORE_LIVE_URL }}
+          ADMIN_TOKEN: ${{ secrets.SKYSAVING_SECRET_KEY }}
+          VERSION: ${{ steps.vars.outputs.VERSION }}
+          PACKAGE_NAME: ${{ steps.vars.outputs.PACKAGE_NAME }}
+          SHA256: ${{ steps.crypto.outputs.SHA256 }}
+          SIGNATURE: ${{ steps.crypto.outputs.SIGNATURE }}
+          CHANNEL: ${{ steps.vars.outputs.CHANNEL }}
+          MANDATORY: ${{ steps.vars.outputs.MANDATORY }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -e
+
+          LIVE_URL="${EDUCORE_LIVE_URL}"
+          if [ -z "${LIVE_URL}" ]; then
+            echo "::notice ::EDUCORE_LIVE_URL secret not set. Defaulting to http://educore.skysaveings.com.ng"
+            LIVE_URL="http://educore.skysaveings.com.ng"
+          fi
+
+          TOKEN="${ADMIN_TOKEN}"
+          if [ -z "${TOKEN}" ]; then
+            echo "::notice ::SKYSAVING_SECRET_KEY secret not set. Defaulting to standard platform key."
+            TOKEN="skysavingtech_secret_key_2026_super_secure_hash"
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            RELEASE_TAG="v${VERSION}"
+          else
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          fi
+
+          DOWNLOAD_URL="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}/${PACKAGE_NAME}"
+
+          if [ "${MANDATORY}" = "true" ]; then
+            MANDATORY_VALUE=1
+          else
+            MANDATORY_VALUE=0
+          fi
+
+          echo "======================================"
+          echo "Registering Release"
+          echo "======================================"
+          echo "Version: ${VERSION}"
+          echo "Channel: ${CHANNEL}"
+          echo "Mandatory: ${MANDATORY_VALUE}"
+          echo "Download: ${DOWNLOAD_URL}"
+
+          # Construct clean base URL without trailing slash
+          CLEAN_LIVE_URL="${LIVE_URL%/}"
+
+          RESPONSE=$(curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --request POST \
+            "${CLEAN_LIVE_URL}/index.php?route=api/v1/releases/register" \
+            --header "Authorization: Bearer ${ADMIN_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data "$(php -r '
+              $data = [
+                  "version" => getenv("VERSION"),
+                  "download_url" => getenv("DOWNLOAD_URL"),
+                  "download_file" => getenv("PACKAGE_NAME"),
+                  "sha256" => getenv("SHA256"),
+                  "signature" => getenv("SIGNATURE"),
+                  "release_channel" => getenv("CHANNEL"),
+                  "mandatory" => (int) getenv("MANDATORY_VALUE"),
+                  "min_php_version" => "8.3.0",
+                  "min_mysql_version" => "8.0.0",
+                  "release_notes" => "Automated build and release via GitHub Actions."
+              ];
+
+              echo json_encode($data, JSON_UNESCAPED_SLASHES);
+            ')" \
+          )
+
+          echo ""
+          echo "Live Server Response:"
+          echo "${RESPONSE}"
+
+          echo ""
+          echo "Release successfully registered with EduCore Live Server."

@@ -1,0 +1,44 @@
+# Environment & Local Secrets
+.env
+.env.local
+.env.*.local
+
+# Installation Locks
+/install/installation.lock
+/storage/maintenance.lock
+
+# Uploads & User Generated Files
+/uploads/*
+!/uploads/.gitkeep
+/uploads/qrcodes/*
+!/uploads/qrcodes/.gitkeep
+/uploads/passports/*
+!/uploads/passports/.gitkeep
+
+# Storage, Backups & Update Packages
+/storage/backups/*
+!/storage/backups/.gitkeep
+/storage/updates/*
+!/storage/updates/.gitkeep
+/config/cache/*
+!/config/cache/.gitkeep
+/scratch/*
+!/scratch/.gitkeep
+*.zip
+*.tar.gz
+*.sql.gz
+
+# Logs & Debugging
+/logs/*
+!/logs/.gitkeep
+*.log
+
+# Dependencies & IDE
+/vendor/
+/node_modules/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+/tmp/
+/cache/

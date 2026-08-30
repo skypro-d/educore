@@ -1,0 +1,44 @@
+Options -MultiViews -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# Allow real static files and assets to pass through
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Prevent missing static files from routing to application index handlers
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule \.(png|jpe?g|gif|svg|ico|css|js|woff2?|ttf|eot)$ - [R=404,L]
+
+# Installer Route
+RewriteRule ^/?install/?$ install/index.php [L,QSA]
+RewriteRule ^/?install/([1-6])$ install/index.php?step=$1 [L,QSA]
+
+# Module Application Routes
+RewriteRule ^/?api/(.*)$ api/index.php?route=$1 [L,QSA]
+RewriteRule ^/?admin/?$ admin/index.php?route=dashboard [L,QSA]
+RewriteRule ^/?admin/(.*)$ admin/index.php?route=$1 [L,QSA]
+RewriteRule ^/?student/?$ student/index.php?route=dashboard [L,QSA]
+RewriteRule ^/?student/(.*)$ student/index.php?route=$1 [L,QSA]
+RewriteRule ^/?parent/?$ parent/index.php?route=dashboard [L,QSA]
+RewriteRule ^/?parent/(.*)$ parent/index.php?route=$1 [L,QSA]
+RewriteRule ^/?teacher/?$ teacher/index.php?route=dashboard [L,QSA]
+RewriteRule ^/?teacher/(.*)$ teacher/index.php?route=$1 [L,QSA]
+
+RewriteRule ^/?payment/process/?$ payment/process.php [L,QSA]
+RewriteRule ^/?payment/success/?$ payment/success.php [L,QSA]
+RewriteRule ^/?webhook/paystack/?$ webhook/paystack.php [L,QSA]
+RewriteRule ^/?webhook/monnify/?$ webhook/monnify.php [L,QSA]
+
+RewriteRule ^/?(home|apply|register|track|verify-payment)/?$ index.php?route=$1 [L,QSA]
+RewriteRule ^/?admission/register/?$ index.php?route=admission/register [L,QSA]
+RewriteRule ^/?register/(nursery|primary|junior-secondary|secondary|senior-secondary)/?$ index.php?route=register/$1 [L,QSA]
+RewriteRule ^/?admission/register/(nursery|primary|junior-secondary|secondary|senior-secondary)/?$ index.php?route=admission/register/$1 [L,QSA]
+</IfModule>
+
+<FilesMatch "\.(sql|md)$">
+  Require all denied
+</FilesMatch>
