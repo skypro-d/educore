@@ -705,8 +705,24 @@ switch ($route) {
         $chkStmt->execute([$rVersion]);
         $existing = $chkStmt->fetch(PDO::FETCH_ASSOC);
         if ($existing) {
+            // Idempotent retry: if exact same checksum was already registered, accept safely
+            if (hash_equals($existing['sha256'] ?? '', $rSha256)) {
+                http_response_code(200);
+                echo json_encode([
+                    'success'            => true,
+                    'status'             => 'success',
+                    'already_registered' => true,
+                    'message'            => "Release v{$rVersion} is already registered with identical checksum.",
+                    'version'            => $rVersion,
+                    'release_channel'    => $rChannel,
+                    'sha256'             => $existing['sha256'],
+                    'mandatory'          => (bool) $rMandatory
+                ]);
+                exit;
+            }
             http_response_code(409);
             echo json_encode([
+                'success' => false,
                 'status'  => 'error',
                 'message' => "Version {$rVersion} already exists and is immutable. Releases cannot be overwritten."
             ]);
@@ -728,10 +744,12 @@ switch ($route) {
 
         http_response_code(201);
         echo json_encode([
+            'success'         => true,
             'status'          => 'success',
             'message'         => "Release {$rVersion} registered successfully.",
             'version'         => $rVersion,
             'release_channel' => $rChannel,
+            'sha256'          => $rSha256,
             'mandatory'       => (bool) $rMandatory
         ]);
         exit;

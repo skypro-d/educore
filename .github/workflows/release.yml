@@ -345,7 +345,7 @@ jobs:
             echo json_encode($data, JSON_UNESCAPED_SLASHES);
           ')
 
-          RESPONSE=$(curl \
+          HTTP_RESPONSE=$(curl \
             --silent \
             --show-error \
             --request POST \
@@ -353,19 +353,68 @@ jobs:
             --header "Authorization: Bearer ${ADMIN_TOKEN}" \
             --header "Content-Type: application/json" \
             --data "${PAYLOAD}" \
+            --write-out "\n%{http_code}" \
           )
 
-          echo ""
-          echo "Live Server Response:"
-          echo "${RESPONSE}"
+          HTTP_BODY=$(echo "${HTTP_RESPONSE}" | sed '$d')
+          HTTP_STATUS=$(echo "${HTTP_RESPONSE}" | tail -n1)
 
-          # Validate response — must contain status:success or status:error with 409 (already registered)
-          if echo "${RESPONSE}" | php -r 'exit(in_array(json_decode(file_get_contents("php://stdin"),true)["status"] ?? "", ["success","error"]) ? 0 : 1);'; then
-            if echo "${RESPONSE}" | php -r '$r=json_decode(file_get_contents("php://stdin"),true); if(($r["status"]??"")!=="success" && !str_contains($r["message"]??"","immutable")) { fwrite(STDERR, "ERROR: ".$r["message"]."\n"); exit(1); }'; then
-              echo ""
-              echo "Release successfully registered with EduCore Live Server."
-            fi
-          else
-            echo "::error ::Registration endpoint returned unexpected response. Check EDUCORE_LIVE_URL points to the correct server."
-            exit 1
-          fi
+          echo ""
+          echo "Live Server Response (HTTP ${HTTP_STATUS}):"
+          echo "${HTTP_BODY}"
+
+          # Robust JSON response validation
+          php -r '
+            $raw = getenv("HTTP_BODY");
+            $httpStatus = (int)getenv("HTTP_STATUS");
+            $expectedVersion = ltrim(getenv("VERSION"), "v");
+            $expectedSha256 = strtolower(getenv("SHA256"));
+            $expectedChannel = getenv("CHANNEL");
+
+            $data = json_decode($raw, true);
+            if (!is_array($data)) {
+                fwrite(STDERR, "::error ::Live server returned non-JSON response (HTTP {$httpStatus}).\n");
+                exit(1);
+            }
+
+            $isSuccess = ($data["success"] ?? false) === true || ($data["status"] ?? "") === "success";
+            $isDuplicate = ($httpStatus === 409) || ($data["already_registered"] ?? false) || str_contains(strtolower($data["message"] ?? ""), "already exists") || str_contains(strtolower($data["message"] ?? ""), "already registered");
+
+            if (!$isSuccess && !$isDuplicate) {
+                $err = $data["message"] ?? "Registration rejected by live server.";
+                fwrite(STDERR, "::error ::Registration failed: {$err} (HTTP {$httpStatus})\n");
+                exit(1);
+            }
+
+            // Validate version
+            if (isset($data["version"])) {
+                $returnedVersion = ltrim((string)$data["version"], "v");
+                if ($returnedVersion !== $expectedVersion) {
+                    fwrite(STDERR, "::error ::Returned version mismatch. Expected: {$expectedVersion}, Got: {$returnedVersion}\n");
+                    exit(1);
+                }
+            }
+
+            // Validate SHA256
+            if (isset($data["sha256"]) && !empty($data["sha256"])) {
+                $returnedSha256 = strtolower((string)$data["sha256"]);
+                if ($returnedSha256 !== $expectedSha256) {
+                    fwrite(STDERR, "::error ::Returned SHA256 mismatch. Expected: {$expectedSha256}, Got: {$returnedSha256}\n");
+                    exit(1);
+                }
+            }
+
+            if ($isDuplicate && !$isSuccess) {
+                echo "NOTICE: Release v{$expectedVersion} was already registered on the server.\n";
+            }
+            exit(0);
+          '
+
+          echo ""
+          echo "======================================"
+          echo "Release successfully registered."
+          echo "Version: ${VERSION}"
+          echo "Channel: ${CHANNEL}"
+          echo "SHA256:  ${SHA256}"
+          echo "======================================"
+
