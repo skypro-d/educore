@@ -31,17 +31,18 @@ final class UpdateChecker
     {
         $cacheFile = self::cacheFilePath();
 
-        // Check local cache (6 hours = 21600 seconds)
+        // Check local cache (5 minutes = 300 seconds)
         if (!$forceRefresh && file_exists($cacheFile)) {
             $cached = json_decode(file_get_contents($cacheFile), true);
             if (is_array($cached) && !empty($cached['checked_at'])) {
-                if ((time() - strtotime((string)$cached['checked_at'])) < 21600) {
+                if ((time() - strtotime((string)$cached['checked_at'])) < 300) {
                     return $cached;
                 }
             }
         }
 
         $currentVersion = defined('EDUCORE_VERSION') ? EDUCORE_VERSION : '1.0.0';
+        $normalizedCurrent = ltrim((string)$currentVersion, 'v');
         $channel = defined('RELEASE_CHANNEL') ? RELEASE_CHANNEL : 'stable';
         $instId = ApiKeyService::getInstallationId();
         $apiKey = ApiKeyService::getApiKey();
@@ -49,17 +50,20 @@ final class UpdateChecker
         $response = ApiKeyService::sendSecureRequest('api/v1/updates/check', [
             'installation_id' => $instId,
             'api_key' => $apiKey,
-            'current_version' => $currentVersion,
+            'current_version' => $normalizedCurrent,
             'release_channel' => $channel,
             'php_version' => PHP_VERSION
         ]);
 
         if ($response && ($response['success'] ?? false)) {
+            $latestVersion = ltrim((string)($response['latest_version'] ?? $normalizedCurrent), 'v');
+            $isNewer = version_compare($latestVersion, $normalizedCurrent, '>');
+
             $data = [
                 'success' => true,
-                'update_available' => (bool)($response['update_available'] ?? false),
-                'current_version' => $currentVersion,
-                'latest_version' => $response['latest_version'] ?? $currentVersion,
+                'update_available' => $isNewer,
+                'current_version' => $normalizedCurrent,
+                'latest_version' => $latestVersion,
                 'release_channel' => $response['release_channel'] ?? $channel,
                 'mandatory' => (bool)($response['mandatory'] ?? false),
                 'minimum_php_version' => $response['minimum_php_version'] ?? '8.3.0',
