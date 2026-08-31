@@ -122,6 +122,9 @@ switch ($route) {
     case 'settings/test-smtp':
         $controller->testSmtp();
         break;
+    case 'settings/save-id-card-color':
+        $controller->saveIdCardColor();
+        break;
     case 'form-builder':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $controller->saveFormBuilder() : $controller->formBuilder();
         break;

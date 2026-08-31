@@ -108,10 +108,23 @@ final class AdminController
         }
 
         render('admin/dashboard', compact(
-            'stats', 'recent', 'byClass', 'byMonth', 'logs',
-            'totalStudents', 'totalStaff', 'termFeesCollected', 
-            'termFeesOutstanding', 'totalClasses', 'recentFees', 'recentAttendance',
-            'totalEntriesToday', 'studentsExitedToday', 'studentsInSchool', 'earlyExitsToday', 'failedExitSms'
+            'stats',
+            'recent',
+            'byClass',
+            'byMonth',
+            'logs',
+            'totalStudents',
+            'totalStaff',
+            'termFeesCollected',
+            'termFeesOutstanding',
+            'totalClasses',
+            'recentFees',
+            'recentAttendance',
+            'totalEntriesToday',
+            'studentsExitedToday',
+            'studentsInSchool',
+            'earlyExitsToday',
+            'failedExitSms'
         ), 'admin');
     }
 
@@ -220,15 +233,15 @@ final class AdminController
 
             // 5. Generate QR code offline (safe, doesn't crash if GD or permissions missing)
             $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
             $qrToken = 'ATTENDANCE-STD-' . $applicantId . '-' . bin2hex(random_bytes(4));
             $schoolDomain = trim((string) ($schoolInfo['domain'] ?? ''));
             $portalHost = ($schoolDomain !== '' && $schoolDomain !== 'localhost') ? preg_replace('#^https?://#', '', $schoolDomain) : $host;
             $portalHost = preg_replace('#/.*$#', '', $portalHost);
-            $qrData  = $scheme . '://' . $portalHost . BASE_URL . '/?route=attendance/scan&token=' . urlencode($qrToken);
-            $qrPath  = 'qrcodes/std_' . $applicantId . '.png';
+            $qrData = $scheme . '://' . $portalHost . BASE_URL . '/?route=attendance/scan&token=' . urlencode($qrToken);
+            $qrPath = 'qrcodes/std_' . $applicantId . '.png';
             $qrFullDir = UPLOAD_PATH . 'qrcodes/';
-            
+
             $qrGenerated = false;
             if (extension_loaded('gd')) {
                 try {
@@ -333,7 +346,7 @@ final class AdminController
         } catch (Throwable $logEx) {
             error_log("Enrollment log record failed: " . $logEx->getMessage());
         }
-        
+
         return [
             'student_user' => $studentUsername,
             'student_pass' => $studentPass,
@@ -412,7 +425,7 @@ final class AdminController
         }
 
         $website = trim((string) ($postSettings['school_website'] ?? $postSettings['website'] ?? ''));
-        $motto   = trim((string) ($postSettings['school_motto'] ?? $postSettings['motto'] ?? ''));
+        $motto = trim((string) ($postSettings['school_motto'] ?? $postSettings['motto'] ?? ''));
 
         // Ensure both aliases are stored in app_configs
         $stmtAppConfig->execute(['school_website', $website]);
@@ -444,7 +457,7 @@ final class AdminController
         $this->saveBrandFile('school_logo', 'branding');
         $this->saveBrandFile('favicon', 'branding');
         flash('success', 'Settings updated.');
-        
+
         $activeTab = trim((string) ($_POST['active_tab'] ?? ''));
         if (!empty($activeTab)) {
             redirect('admin/settings#' . urlencode($activeTab));
@@ -464,13 +477,13 @@ final class AdminController
         }
 
         $config = [
-            'smtp_host'       => $_POST['smtp_host'] ?? '',
-            'smtp_port'       => $_POST['smtp_port'] ?? '',
-            'smtp_secure'     => $_POST['smtp_secure'] ?? '',
-            'smtp_username'   => $_POST['smtp_username'] ?? '',
-            'smtp_password'   => $_POST['smtp_password'] ?? '',
+            'smtp_host' => $_POST['smtp_host'] ?? '',
+            'smtp_port' => $_POST['smtp_port'] ?? '',
+            'smtp_secure' => $_POST['smtp_secure'] ?? '',
+            'smtp_username' => $_POST['smtp_username'] ?? '',
+            'smtp_password' => $_POST['smtp_password'] ?? '',
             'smtp_from_email' => $_POST['smtp_from_email'] ?? '',
-            'smtp_from_name'  => $_POST['smtp_from_name'] ?? ''
+            'smtp_from_name' => $_POST['smtp_from_name'] ?? ''
         ];
 
         $result = Email::testConnection($config, $to);
@@ -492,6 +505,32 @@ final class AdminController
         }
 
         redirect('admin/settings#tab-smtp');
+    }
+
+    public function saveIdCardColor(): void
+    {
+        require_permission('settings');
+        verify_csrf();
+
+        $primary = trim($_POST['id_card_primary_color'] ?? '#0b3d91');
+        $secondary = trim($_POST['id_card_secondary_color'] ?? '#1e40af');
+        $headerBg = trim($_POST['id_card_header_bg'] ?? '#0f172a');
+
+        $stmt = $this->db->prepare(
+            'INSERT INTO app_configs (setting_key, setting_value) 
+             VALUES (?, ?) 
+             ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)'
+        );
+        $stmt->execute(['id_card_primary_color', $primary]);
+        $stmt->execute(['id_card_secondary_color', $secondary]);
+        $stmt->execute(['id_card_header_bg', $headerBg]);
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => true,
+            'message' => 'School ID card colors updated successfully.'
+        ]);
+        exit;
     }
 
     public function formBuilder(): void
@@ -744,7 +783,7 @@ final class AdminController
     {
         require_permission('fees');
         verify_csrf();
-        
+
         $feeName = trim($_POST['fee_name'] ?? '');
         $amount = (float) ($_POST['amount'] ?? 0);
         $term = $_POST['term'] ?? 'First';
@@ -779,7 +818,7 @@ final class AdminController
     public function studentFees(): void
     {
         require_permission('fees');
-        
+
         $filters = [
             'q' => $_GET['q'] ?? '',
             'class_id' => $_GET['class_id'] ?? '',
@@ -803,7 +842,7 @@ final class AdminController
 
             if ($applicantId && $fee) {
                 $ref = 'MAN-' . strtoupper(bin2hex(random_bytes(5)));
-                $balance = max(0.00, (float)$fee['amount'] - $amountPaid);
+                $balance = max(0.00, (float) $fee['amount'] - $amountPaid);
                 $status = ($balance <= 0) ? 'Paid' : 'Partial';
                 $rcpt = generate_receipt_number($this->db);
 
@@ -844,7 +883,7 @@ final class AdminController
                 JOIN applicants a ON a.id=sfp.applicant_id
                 LEFT JOIN classes c ON c.id=a.class_id
                 WHERE 1=1";
-        
+
         $params = [];
         if ($filters['q'] !== '') {
             $sql .= " AND (a.first_name LIKE ? OR a.last_name LIKE ? OR a.application_number LIKE ?)";
@@ -902,8 +941,8 @@ final class AdminController
         $payment = $stmt->fetch();
 
         if ($payment) {
-            $newPaid = (float)$payment['amount_paid'] + $amountPaid;
-            $newBalance = max(0.00, (float)$payment['balance'] - $amountPaid);
+            $newPaid = (float) $payment['amount_paid'] + $amountPaid;
+            $newBalance = max(0.00, (float) $payment['balance'] - $amountPaid);
             $newStatus = ($newBalance <= 0) ? 'Paid' : 'Partial';
 
             $upd = $this->db->prepare(
@@ -911,7 +950,7 @@ final class AdminController
                  SET amount_paid=?, balance=?, payment_status=?, payment_method=?, notes=CONCAT(COALESCE(notes,''), '\n', ?), payment_date=NOW()
                  WHERE id=?"
             );
-            $upd->execute([$newPaid, $newBalance, $newStatus, $method, "Recorded â‚¦".number_format($amountPaid)." via $method. Notes: $notes", $paymentId]);
+            $upd->execute([$newPaid, $newBalance, $newStatus, $method, "Recorded â‚¦" . number_format($amountPaid) . " via $method. Notes: $notes", $paymentId]);
             flash('success', 'Balance payment applied.');
         } else {
             flash('danger', 'Payment record not found.');
@@ -976,7 +1015,7 @@ final class AdminController
     {
         require_permission('promotion');
         verify_csrf();
-        
+
         $fromClassId = (int) ($_POST['from_class_id'] ?? 0);
         $toClassId = $_POST['to_class_id'] !== '' ? (int) $_POST['to_class_id'] : null;
         $studentIds = $_POST['student_ids'] ?? [];
@@ -993,7 +1032,7 @@ final class AdminController
         try {
             foreach ($studentIds as $applicantId) {
                 $applicantId = (int) $applicantId;
-                
+
                 // Record history
                 $stmt = $this->db->prepare(
                     "INSERT INTO promotion_history (applicant_id, from_class_id, to_class_id, academic_year, action, remarks, promoted_by)
@@ -1036,7 +1075,7 @@ final class AdminController
     {
         require_permission('communications');
         $classes = (new ClassModel($this->db))->all();
-        
+
         $announcements = $this->db->query(
             "SELECT a.*, c.name AS class_name 
              FROM announcements a 
@@ -1055,7 +1094,7 @@ final class AdminController
     {
         require_permission('communications');
         verify_csrf();
-        
+
         $title = trim($_POST['title'] ?? '');
         $body = trim($_POST['body'] ?? '');
         $audience = $_POST['audience'] ?? 'all';
@@ -1159,7 +1198,7 @@ final class AdminController
         $role = $_POST['role'] ?? 'Teacher';
         $status = $_POST['status'] ?? 'Active';
         $qualification = trim($_POST['qualification'] ?? '');
-        $salary = $_POST['salary'] !== '' ? (float)$_POST['salary'] : null;
+        $salary = $_POST['salary'] !== '' ? (float) $_POST['salary'] : null;
 
         if ($firstName === '' || $lastName === '' || $phone === '') {
             flash('danger', 'First Name, Last Name and Phone are required.');
@@ -1256,13 +1295,13 @@ final class AdminController
         $map = settings_map();
 
         // SMS logs with optional filters
-        $smsFilter    = $_GET['sms_type'] ?? '';
-        $smsStatus    = $_GET['sms_status'] ?? '';
-        $smsDate      = $_GET['sms_date'] ?? '';
-        $smsSearch    = trim($_GET['sms_search'] ?? '');
+        $smsFilter = $_GET['sms_type'] ?? '';
+        $smsStatus = $_GET['sms_status'] ?? '';
+        $smsDate = $_GET['sms_date'] ?? '';
+        $smsSearch = trim($_GET['sms_search'] ?? '');
 
         $sqlLogs = "SELECT * FROM sms_logs WHERE 1=1";
-        $params  = [];
+        $params = [];
 
         if ($smsFilter !== '') {
             $sqlLogs .= " AND sms_type = ?";
@@ -1288,11 +1327,17 @@ final class AdminController
         $smsLogs = $stmt->fetchAll();
 
         $lastAutoAbsent = $map['auto_absent_last_run'] ?? '';
-        $times          = AttendanceRules::getTimes();
+        $times = AttendanceRules::getTimes();
 
         render('admin/attendance_settings', compact(
-            'map', 'smsLogs', 'lastAutoAbsent', 'times',
-            'smsFilter', 'smsStatus', 'smsDate', 'smsSearch'
+            'map',
+            'smsLogs',
+            'lastAutoAbsent',
+            'times',
+            'smsFilter',
+            'smsStatus',
+            'smsDate',
+            'smsSearch'
         ), 'admin');
     }
 
@@ -1313,8 +1358,11 @@ final class AdminController
         if ($section === 'time-rules') {
             $tabRedirect = 'time-rules';
             $timeKeys = [
-                'attendance_open_time', 'attendance_ontime_until', 'attendance_late_from',
-                'attendance_close_time', 'school_close_time'
+                'attendance_open_time',
+                'attendance_ontime_until',
+                'attendance_late_from',
+                'attendance_close_time',
+                'school_close_time'
             ];
             foreach ($timeKeys as $key) {
                 if (isset($postSettings[$key])) {
@@ -1346,8 +1394,12 @@ final class AdminController
         } elseif ($section === 'exit') {
             $tabRedirect = 'exit';
             $toggles = [
-                'exit_tracking_enabled', 'exit_sms_enabled', 'early_exit_sms_enabled',
-                'exit_require_pickup_verification', 'exit_allow_manual', 'exit_require_entry_record'
+                'exit_tracking_enabled',
+                'exit_sms_enabled',
+                'early_exit_sms_enabled',
+                'exit_require_pickup_verification',
+                'exit_allow_manual',
+                'exit_require_entry_record'
             ];
             foreach ($toggles as $key) {
                 $val = isset($postSettings[$key]) ? '1' : '0';
@@ -1424,7 +1476,7 @@ final class AdminController
 
         $schoolId = SchoolContext::id();
         $deviceId = (int) ($_POST['device_id'] ?? 0);
-        $name     = trim($_POST['device_name'] ?? '');
+        $name = trim($_POST['device_name'] ?? '');
         $location = trim($_POST['location'] ?? '');
 
         if ($name === '') {
@@ -1978,7 +2030,7 @@ final class AdminController
                     'parent_name' => $student['parent_name'] ?: ($student['father_name'] ?: ($student['mother_name'] ?: 'Parent/Guardian')),
                     'parent_phone' => mask_phone($student['parent_phone']),
                 ],
-                'authorized_pickups' => array_map(function($p) {
+                'authorized_pickups' => array_map(function ($p) {
                     return [
                         'id' => $p['id'],
                         'name' => $p['name'],
@@ -1993,7 +2045,7 @@ final class AdminController
 
         // 8. Normal exit without required prompt -> Record immediately
         $adminUser = admin();
-        $staffId = $adminUser ? (int)$adminUser['id'] : null;
+        $staffId = $adminUser ? (int) $adminUser['id'] : null;
         $staffName = $adminUser ? $adminUser['name'] : 'Gate Staff';
 
         $gateName = null;
@@ -2018,9 +2070,22 @@ final class AdminController
                 (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, 'verified', 'pending', NOW())"
         );
         $ins->execute([
-            $schoolId, $studentId, $attendanceId, $pickupPersonId, $pickupPersonName,
-            $exitType, $exitReason, $exitNotes, $today, $nowTime,
-            $gateId, $gateName, $staffId, $staffName, $scanMethod, $token
+            $schoolId,
+            $studentId,
+            $attendanceId,
+            $pickupPersonId,
+            $pickupPersonName,
+            $exitType,
+            $exitReason,
+            $exitNotes,
+            $today,
+            $nowTime,
+            $gateId,
+            $gateName,
+            $staffId,
+            $staffName,
+            $scanMethod,
+            $token
         ]);
         $exitLogId = (int) $this->db->lastInsertId();
 
@@ -2123,7 +2188,7 @@ final class AdminController
         }
 
         $adminUser = admin();
-        $staffId = $adminUser ? (int)$adminUser['id'] : null;
+        $staffId = $adminUser ? (int) $adminUser['id'] : null;
         $staffName = $adminUser ? $adminUser['name'] : 'Gate Staff';
 
         $ins = $this->db->prepare(
@@ -2136,9 +2201,21 @@ final class AdminController
                 (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, 'verified', 'pending', NOW())"
         );
         $ins->execute([
-            $schoolId, $studentId, $pickupPersonId, $pickupPersonName,
-            $exitType, $exitReason, $exitNotes, $today, $nowTime,
-            $gateId, $gateName, $staffId, $staffName, $scanMethod, $student['qr_data'] ?? null
+            $schoolId,
+            $studentId,
+            $pickupPersonId,
+            $pickupPersonName,
+            $exitType,
+            $exitReason,
+            $exitNotes,
+            $today,
+            $nowTime,
+            $gateId,
+            $gateName,
+            $staffId,
+            $staffName,
+            $scanMethod,
+            $student['qr_data'] ?? null
         ]);
         $exitLogId = (int) $this->db->lastInsertId();
 
@@ -2199,7 +2276,7 @@ final class AdminController
         $stmt->execute([$term, $term, $term, $term]);
         $rows = $stmt->fetchAll();
 
-        $results = array_map(function($r) {
+        $results = array_map(function ($r) {
             return [
                 'id' => $r['id'],
                 'name' => trim($r['first_name'] . ' ' . $r['last_name']),
@@ -2264,7 +2341,7 @@ final class AdminController
         }
 
         $adminUser = admin();
-        $staffId = $adminUser ? (int)$adminUser['id'] : null;
+        $staffId = $adminUser ? (int) $adminUser['id'] : null;
         $staffName = $adminUser ? $adminUser['name'] : 'Gate Staff';
 
         $ins = $this->db->prepare(
@@ -2277,9 +2354,17 @@ final class AdminController
                 (?, ?, NULL, NULL, ?, 'manual', ?, ?, ?, ?, NOW(), ?, ?, ?, ?, 'manual', NULL, 'manual_override', 'pending', NOW())"
         );
         $ins->execute([
-            $schoolId, $studentId, $pickupPersonName,
-            $reason, $notes, $today, $nowTime,
-            $gateId, $gateName, $staffId, $staffName
+            $schoolId,
+            $studentId,
+            $pickupPersonName,
+            $reason,
+            $notes,
+            $today,
+            $nowTime,
+            $gateId,
+            $gateName,
+            $staffId,
+            $staffName
         ]);
         $exitLogId = (int) $this->db->lastInsertId();
 
@@ -2316,16 +2401,16 @@ final class AdminController
         $classes = (new ClassModel($this->db))->all();
         $gates = $this->db->query("SELECT * FROM school_gates ORDER BY gate_name ASC")->fetchAll();
 
-        $dateFrom  = trim($_GET['date_from'] ?? '');
-        $dateTo    = trim($_GET['date_to'] ?? '');
-        $classId   = (int) ($_GET['class_id'] ?? 0);
-        $gateId    = (int) ($_GET['gate_id'] ?? 0);
-        $exitType  = trim($_GET['exit_type'] ?? '');
+        $dateFrom = trim($_GET['date_from'] ?? '');
+        $dateTo = trim($_GET['date_to'] ?? '');
+        $classId = (int) ($_GET['class_id'] ?? 0);
+        $gateId = (int) ($_GET['gate_id'] ?? 0);
+        $exitType = trim($_GET['exit_type'] ?? '');
         $smsStatus = trim($_GET['sms_status'] ?? '');
-        $search    = trim($_GET['q'] ?? '');
-        $page      = max(1, (int) ($_GET['page'] ?? 1));
-        $perPage   = 25;
-        $offset    = ($page - 1) * $perPage;
+        $search = trim($_GET['q'] ?? '');
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+        $perPage = 25;
+        $offset = ($page - 1) * $perPage;
 
         $where = ["1=1"];
         $params = [];
@@ -2391,9 +2476,23 @@ final class AdminController
         }
 
         render('admin/exit_logs', compact(
-            'logs', 'classes', 'gates', 'totalLogs', 'totalPages', 'page', 'perPage',
-            'dateFrom', 'dateTo', 'classId', 'gateId', 'exitType', 'smsStatus', 'search',
-            'totalToday', 'earlyToday', 'smsFailed'
+            'logs',
+            'classes',
+            'gates',
+            'totalLogs',
+            'totalPages',
+            'page',
+            'perPage',
+            'dateFrom',
+            'dateTo',
+            'classId',
+            'gateId',
+            'exitType',
+            'smsStatus',
+            'search',
+            'totalToday',
+            'earlyToday',
+            'smsFailed'
         ), 'admin');
     }
 
@@ -2401,13 +2500,13 @@ final class AdminController
     {
         require_permission('exit_logs');
 
-        $dateFrom  = trim($_GET['date_from'] ?? '');
-        $dateTo    = trim($_GET['date_to'] ?? '');
-        $classId   = (int) ($_GET['class_id'] ?? 0);
-        $gateId    = (int) ($_GET['gate_id'] ?? 0);
-        $exitType  = trim($_GET['exit_type'] ?? '');
+        $dateFrom = trim($_GET['date_from'] ?? '');
+        $dateTo = trim($_GET['date_to'] ?? '');
+        $classId = (int) ($_GET['class_id'] ?? 0);
+        $gateId = (int) ($_GET['gate_id'] ?? 0);
+        $exitType = trim($_GET['exit_type'] ?? '');
         $smsStatus = trim($_GET['sms_status'] ?? '');
-        $search    = trim($_GET['q'] ?? '');
+        $search = trim($_GET['q'] ?? '');
 
         $where = ["1=1"];
         $params = [];
@@ -2466,7 +2565,7 @@ final class AdminController
 
         $out = fopen('php://output', 'w');
         // UTF-8 BOM for Excel compatibility
-        fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+        fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
         fputcsv($out, ['ID', 'Student Name', 'Admission No', 'Class', 'Exit Date', 'Exit Time', 'Exit Type', 'Reason', 'Pickup Person', 'Gate', 'Verified By', 'Method', 'Parent Phone', 'SMS Status']);
 
         foreach ($rows as $r) {
@@ -2549,11 +2648,11 @@ final class AdminController
         require_permission('gates');
         verify_csrf();
 
-        $id       = (int) ($_POST['id'] ?? 0);
-        $name     = trim($_POST['gate_name'] ?? '');
-        $code     = trim($_POST['gate_code'] ?? '');
+        $id = (int) ($_POST['id'] ?? 0);
+        $name = trim($_POST['gate_name'] ?? '');
+        $code = trim($_POST['gate_code'] ?? '');
         $location = trim($_POST['location'] ?? '');
-        $status   = trim($_POST['status'] ?? 'active');
+        $status = trim($_POST['status'] ?? 'active');
         $schoolId = SchoolContext::id();
 
         if ($name === '') {
@@ -2619,14 +2718,14 @@ final class AdminController
         require_permission('authorized_pickups');
         verify_csrf();
 
-        $id           = (int) ($_POST['id'] ?? 0);
-        $studentId    = (int) ($_POST['student_id'] ?? 0);
-        $name         = trim($_POST['name'] ?? '');
+        $id = (int) ($_POST['id'] ?? 0);
+        $studentId = (int) ($_POST['student_id'] ?? 0);
+        $name = trim($_POST['name'] ?? '');
         $relationship = trim($_POST['relationship'] ?? 'Guardian');
-        $phone        = trim($_POST['phone'] ?? '');
+        $phone = trim($_POST['phone'] ?? '');
         $idCardNumber = trim($_POST['id_card_number'] ?? '');
-        $isActive     = isset($_POST['is_active']) ? 1 : 0;
-        $schoolId     = SchoolContext::id();
+        $isActive = isset($_POST['is_active']) ? 1 : 0;
+        $schoolId = SchoolContext::id();
 
         if ($studentId <= 0 || $name === '' || $phone === '') {
             flash('danger', 'Student, Guardian Name, and Phone Number are required.');
@@ -2743,7 +2842,8 @@ final class AdminController
         try {
             $stmt = $this->db->query("SELECT * FROM `system_update_history` ORDER BY `id` DESC LIMIT 20");
             $history = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
-        } catch (Throwable $t) {}
+        } catch (Throwable $t) {
+        }
 
         // Fetch Pending Migrations
         $migrationRunner = new MigrationRunner($this->db);

@@ -340,16 +340,66 @@ $activeWebsite = school_website_url();
                 'dashboard_color' => 'Dashboard Header Color'
             ]; 
             ?>
-            <div class="row g-3">
+            <div class="row g-3 mb-4">
                 <?php foreach ($colors as $key => $label): ?>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold small text-secondary"><?= e($label) ?></label>
                         <div class="input-group">
-                            <input class="form-control form-control-color" type="color" name="settings[<?= e($key) ?>]" value="<?= e($map[$key] ?? '#0b3d91') ?>">
+                            <input class="form-control form-control-color" type="color" name="settings[<?= e($key) ?>]" value="<?= e($map[$key] ?? '#0b3d91') ?>" onchange="this.nextElementSibling.value=this.value.toUpperCase()">
                             <input type="text" class="form-control form-control-sm text-uppercase font-monospace" value="<?= e($map[$key] ?? '#0b3d91') ?>" readonly style="max-width: 110px;">
                         </div>
                     </div>
                 <?php endforeach; ?>
+            </div>
+
+            <!-- Student ID Card Color Theming -->
+            <div class="p-3 rounded-3 border bg-light mt-4">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <h6 class="fw-bold text-dark mb-1"><i class="ti ti-id text-primary me-1"></i> Student ID Card Theme &amp; Colors</h6>
+                        <p class="small text-muted mb-0">Choose official colors for Student ID Cards across printouts, Student Portals, and Parent Portals.</p>
+                    </div>
+                    <div>
+                        <a href="<?= url('admin/applications') ?>" class="btn btn-sm btn-outline-primary"><i class="ti ti-external-link me-1"></i> Preview on Student Card</a>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold small text-secondary">ID Card Primary Accent</label>
+                        <div class="input-group">
+                            <input class="form-control form-control-color" type="color" id="settingsIdPrimary" name="settings[id_card_primary_color]" value="<?= e($map['id_card_primary_color'] ?? $map['primary_color'] ?? '#0b3d91') ?>" onchange="this.nextElementSibling.value=this.value.toUpperCase(); updateSettingsIdPreview();">
+                            <input type="text" class="form-control form-control-sm text-uppercase font-monospace" value="<?= e($map['id_card_primary_color'] ?? $map['primary_color'] ?? '#0b3d91') ?>" readonly style="max-width: 110px;">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold small text-secondary">ID Card Secondary Wave Accent</label>
+                        <div class="input-group">
+                            <input class="form-control form-control-color" type="color" id="settingsIdSecondary" name="settings[id_card_secondary_color]" value="<?= e($map['id_card_secondary_color'] ?? $map['secondary_color'] ?? '#1e40af') ?>" onchange="this.nextElementSibling.value=this.value.toUpperCase(); updateSettingsIdPreview();">
+                            <input type="text" class="form-control form-control-sm text-uppercase font-monospace" value="<?= e($map['id_card_secondary_color'] ?? $map['secondary_color'] ?? '#1e40af') ?>" readonly style="max-width: 110px;">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold small text-secondary">ID Card Header Dark Base</label>
+                        <div class="input-group">
+                            <input class="form-control form-control-color" id="settingsIdHeader" name="settings[id_card_header_bg]" value="<?= e($map['id_card_header_bg'] ?? '#0f172a') ?>" onchange="this.nextElementSibling.value=this.value.toUpperCase(); updateSettingsIdPreview();">
+                            <input type="text" class="form-control form-control-sm text-uppercase font-monospace" value="<?= e($map['id_card_header_bg'] ?? '#0f172a') ?>" readonly style="max-width: 110px;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 1-Click ID Card Color Presets -->
+                <div class="mt-3 pt-3 border-top d-flex align-items-center flex-wrap gap-2">
+                    <span class="small fw-semibold text-secondary me-2">Quick Presets:</span>
+                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="applySettingsIdPreset('#0b3d91','#1e40af','#0f172a')"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0b3d91;margin-right:4px;"></span>Navy Blue</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="applySettingsIdPreset('#047857','#10b981','#064e3b')"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#047857;margin-right:4px;"></span>Emerald Green</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="applySettingsIdPreset('#6b21a8','#9333ea','#3b0764')"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#6b21a8;margin-right:4px;"></span>Royal Purple</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="applySettingsIdPreset('#991b1b','#dc2626','#450a0a')"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#991b1b;margin-right:4px;"></span>Crimson Red</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="applySettingsIdPreset('#b45309','#f59e0b','#451a03')"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#b45309;margin-right:4px;"></span>Gold Amber</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="applySettingsIdPreset('#0f766e','#06b6d4','#134e4a')"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0f766e;margin-right:4px;"></span>Deep Teal</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="applySettingsIdPreset('#334155','#64748b','#0f172a')"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#334155;margin-right:4px;"></span>Slate Onyx</button>
+                    <button type="button" class="btn btn-xs btn-primary rounded-pill ms-auto" onclick="syncSettingsIdWithBrand()"><i class="ti ti-wand me-1"></i>Sync with School Primary Color</button>
+                </div>
             </div>
         </div>
 
@@ -874,5 +924,20 @@ function updateWebPreview(val) {
     if (label) label.textContent = previewUrl;
     const btn = document.getElementById('previewWebBtn');
     if (btn) btn.href = previewUrl;
+}
+
+function applySettingsIdPreset(primary, secondary, header) {
+    const p = document.getElementById('settingsIdPrimary');
+    const s = document.getElementById('settingsIdSecondary');
+    const h = document.getElementById('settingsIdHeader');
+    if (p) { p.value = primary; p.nextElementSibling.value = primary.toUpperCase(); }
+    if (s) { s.value = secondary; s.nextElementSibling.value = secondary.toUpperCase(); }
+    if (h) { h.value = header; h.nextElementSibling.value = header.toUpperCase(); }
+}
+
+function syncSettingsIdWithBrand() {
+    const brandColorInput = document.querySelector('input[name="settings[primary_color]"]');
+    const brandColor = brandColorInput ? brandColorInput.value : '#0b3d91';
+    applySettingsIdPreset(brandColor, brandColor, '#0f172a');
 }
 </script>

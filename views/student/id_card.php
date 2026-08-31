@@ -1,4 +1,29 @@
+<?php
+/**
+ * views/student/id_card.php
+ * Student Portal — Dynamic Themed ID Card
+ */
+$fullSchoolName = setting('school_name', 'BLUEFIELD INTERNATIONAL SCHOOL');
+$nameParts = explode(' ', trim($fullSchoolName), 2);
+$mainName = strtoupper($nameParts[0] ?? 'BLUEFIELD');
+$subName  = strtoupper($nameParts[1] ?? 'INTERNATIONAL SCHOOL');
+
+// School Logo URL calculation
+$logoUrl = school_logo_url() ?: '';
+
+// Dynamic ID Card Colors
+$idPrimaryColor   = setting('id_card_primary_color', setting('primary_color', '#0b3d91'));
+$idSecondaryColor = setting('id_card_secondary_color', setting('secondary_color', '#1e40af'));
+$idHeaderBg       = setting('id_card_header_bg', '#0f172a');
+?>
+
 <style>
+    :root {
+        --id-primary: <?= e($idPrimaryColor) ?>;
+        --id-secondary: <?= e($idSecondaryColor) ?>;
+        --id-header-bg: <?= e($idHeaderBg) ?>;
+    }
+
     .id-card-wrapper {
         display: flex;
         gap: 30px;
@@ -26,7 +51,7 @@
         position: relative;
         width: 100%;
         height: 195px;
-        background: #0f172a;
+        background: var(--id-header-bg);
         overflow: hidden;
     }
 
@@ -68,7 +93,9 @@
     .id-school-logo-box img {
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: contain;
+        background: #ffffff;
+        padding: 2px;
         display: block;
     }
 
@@ -104,9 +131,9 @@
         width: 150px;
         height: 150px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #0052cc 0%, #0080ff 100%);
+        background: linear-gradient(135deg, var(--id-primary) 0%, var(--id-secondary) 100%);
         padding: 5px;
-        box-shadow: 0 8px 20px rgba(0, 82, 204, 0.35);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
     }
 
     .id-photo-inner-ring {
@@ -145,7 +172,7 @@
     .id-student-name {
         font-size: 19px;
         font-weight: 900;
-        color: #0040a8;
+        color: var(--id-primary);
         text-transform: uppercase;
         letter-spacing: 0.5px;
         margin-bottom: 2px;
@@ -163,7 +190,7 @@
     .id-divider-line {
         width: 65%;
         height: 2px;
-        background: #0052cc;
+        background: var(--id-primary);
         margin: 8px 0 14px;
         border-radius: 2px;
     }
@@ -190,14 +217,14 @@
         width: 36px;
         height: 36px;
         border-radius: 50%;
-        background: #0052cc;
+        background: var(--id-primary);
         color: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 18px;
         flex-shrink: 0;
-        box-shadow: 0 4px 10px rgba(0, 82, 204, 0.25);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
     }
 
     .id-info-cols {
@@ -232,7 +259,7 @@
     /* Back Card Specifics */
     .id-card-back-topbar {
         height: 14px;
-        background: #0052cc;
+        background: var(--id-primary);
         width: 100%;
     }
 
@@ -341,19 +368,17 @@
 
     .id-card-back-footer {
         height: 22px;
-        background: #0f172a;
+        background: var(--id-header-bg);
         width: 100%;
     }
 
     @media print {
-        .student-sidebar, .student-topbar, .no-print, .student-mobile-bar, div[style*="text-align:center"] {
-            display: none !important;
-        }
-        .student-main {
-            margin-left: 0 !important;
-        }
-        .student-content {
+        body {
+            background: white !important;
             padding: 0 !important;
+        }
+        .no-print {
+            display: none !important;
         }
         .id-card-wrapper {
             margin-top: 0 !important;
@@ -373,14 +398,6 @@
 </div>
 
 <?php
-$fullSchoolName = setting('school_name', 'BLUEFIELD INTERNATIONAL SCHOOL');
-$nameParts = explode(' ', trim($fullSchoolName), 2);
-$mainName = strtoupper($nameParts[0] ?? 'BLUEFIELD');
-$subName  = strtoupper($nameParts[1] ?? 'INTERNATIONAL SCHOOL');
-
-// School Logo URL calculation
-$logoUrl = school_logo_url() ?: '';
-
 // QR Code Website Link Generation
 $token = !empty($student['qr_data']) ? $student['qr_data'] : 'ATTENDANCE-STD-' . $student['id'];
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
@@ -422,14 +439,14 @@ if (!$hasQr) {
         <div class="id-card-header-bg">
             <svg class="id-header-wave" viewBox="0 0 330 195" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
                 <defs>
-                    <linearGradient id="blueWaveGradStd" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#0052cc" />
-                        <stop offset="100%" stop-color="#0066ff" />
+                    <linearGradient id="blueWaveGradStudent" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="<?= e($idPrimaryColor) ?>" />
+                        <stop offset="100%" stop-color="<?= e($idSecondaryColor) ?>" />
                     </linearGradient>
                 </defs>
-                <rect width="330" height="195" fill="#0f172a" />
-                <path d="M 0,0 L 210,0 C 170,70 110,120 0,165 Z" fill="url(#blueWaveGradStd)" />
-                <path d="M 0,0 L 140,0 C 240,60 290,130 0,195 Z" fill="url(#blueWaveGradStd)" opacity="0.85" />
+                <rect width="330" height="195" fill="<?= e($idHeaderBg) ?>" />
+                <path d="M 0,0 L 210,0 C 170,70 110,120 0,165 Z" fill="url(#blueWaveGradStudent)" />
+                <path d="M 0,0 L 140,0 C 240,60 290,130 0,195 Z" fill="url(#blueWaveGradStudent)" opacity="0.85" />
                 <path d="M 0,195 C 100,135 230,190 330,140 L 330,195 Z" fill="#ffffff" />
             </svg>
 
@@ -438,28 +455,10 @@ if (!$hasQr) {
                     <?php if (!empty($logoUrl)): ?>
                         <img src="<?= e($logoUrl) ?>" alt="School Logo" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
                         <div style="display:none;">
-                            <svg width="32" height="32" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M18 2 L33 10.5 V25.5 L18 34 L3 25.5 V10.5 Z" stroke="#00d2ff" stroke-width="3" fill="none" stroke-linejoin="round"/>
-                                <path d="M18 9 L27 14.25 V21.75 L18 27 L9 21.75 V14.25 Z" fill="url(#bluefieldLogoGradStd)" />
-                                <defs>
-                                    <linearGradient id="bluefieldLogoGradStd" x1="9" y1="9" x2="27" y2="27">
-                                        <stop offset="0%" stop-color="#00d2ff"/>
-                                        <stop offset="100%" stop-color="#0052cc"/>
-                                    </linearGradient>
-                                </defs>
-                            </svg>
+                            <i class="ti ti-school" style="font-size:24px;"></i>
                         </div>
                     <?php else: ?>
-                        <svg width="32" height="32" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M18 2 L33 10.5 V25.5 L18 34 L3 25.5 V10.5 Z" stroke="#00d2ff" stroke-width="3" fill="none" stroke-linejoin="round"/>
-                            <path d="M18 9 L27 14.25 V21.75 L18 27 L9 21.75 V14.25 Z" fill="url(#bluefieldLogoGradStdFallback)" />
-                            <defs>
-                                <linearGradient id="bluefieldLogoGradStdFallback" x1="9" y1="9" x2="27" y2="27">
-                                    <stop offset="0%" stop-color="#00d2ff"/>
-                                    <stop offset="100%" stop-color="#0052cc"/>
-                                </linearGradient>
-                            </defs>
-                        </svg>
+                        <i class="ti ti-school" style="font-size:24px;"></i>
                     <?php endif; ?>
                 </div>
                 <div class="id-school-title-text">
@@ -553,9 +552,9 @@ if (!$hasQr) {
                     <i class="ti ti-phone-call"></i> IN CASE OF EMERGENCY
                 </div>
                 <div class="id-emergency-details">
-                    Parent/Guardian: <?= e($student['parent_name'] ?: ($student['emergency_contact_name'] ?? 'Mr Azzan')) ?><br>
-                    Phone: <?= e($student['parent_phone'] ?: ($student['emergency_contact_phone'] ?? '07081306993')) ?><br>
-                    Address: <?= e($student['home_address'] ?: 'akobo OLORUDA') ?>
+                    Parent/Guardian: <?= e($student['parent_name'] ?: ($student['emergency_contact_name'] ?? 'Parent / Guardian')) ?><br>
+                    Phone: <?= e($student['parent_phone'] ?: ($student['emergency_contact_phone'] ?? '08000000000')) ?><br>
+                    Address: <?= e($student['home_address'] ?: 'School Residential District') ?>
                 </div>
             </div>
 

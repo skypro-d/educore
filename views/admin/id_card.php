@@ -1,3 +1,21 @@
+<?php
+/**
+ * views/admin/id_card.php
+ * Official Student ID Card — Full Dynamic Theming & Print System
+ */
+$fullSchoolName = setting('school_name', 'BLUEFIELD INTERNATIONAL SCHOOL');
+$nameParts = explode(' ', trim($fullSchoolName), 2);
+$mainName = strtoupper($nameParts[0] ?? 'BLUEFIELD');
+$subName  = strtoupper($nameParts[1] ?? 'INTERNATIONAL SCHOOL');
+
+// School Logo URL calculation
+$logoUrl = school_logo_url() ?: '';
+
+// Dynamic ID Card Colors
+$idPrimaryColor   = setting('id_card_primary_color', setting('primary_color', '#0b3d91'));
+$idSecondaryColor = setting('id_card_secondary_color', setting('secondary_color', '#1e40af'));
+$idHeaderBg       = setting('id_card_header_bg', '#0f172a');
+?>
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,6 +24,12 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --id-primary: <?= e($idPrimaryColor) ?>;
+            --id-secondary: <?= e($idSecondaryColor) ?>;
+            --id-header-bg: <?= e($idHeaderBg) ?>;
+        }
+
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
@@ -13,20 +37,40 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 40px 20px;
+            padding: 30px 20px 60px;
             color: #0f172a;
         }
         
+        /* Top Action & Customizer Bar */
         .no-print {
             margin-bottom: 24px;
+            width: 100%;
+            max-width: 820px;
             display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .action-bar-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
             gap: 12px;
         }
+
+        .action-bar-left, .action-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
         .btn-action {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            background: #0052cc;
+            background: var(--id-primary);
             color: white;
             padding: 10px 22px;
             border-radius: 10px;
@@ -35,11 +79,11 @@
             border: none;
             cursor: pointer;
             font-size: 14px;
-            box-shadow: 0 4px 12px rgba(0,82,204,0.25);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             transition: all 0.2s ease;
         }
         .btn-action:hover {
-            background: #0040a8;
+            filter: brightness(0.92);
             transform: translateY(-1px);
         }
         .btn-action-back {
@@ -51,6 +95,98 @@
         .btn-action-back:hover {
             background: #f8fafc;
             color: #0f172a;
+        }
+
+        /* Color Customization Panel */
+        .color-palette-toolbar {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 14px 18px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .color-toolbar-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .color-inputs-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .color-input-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #f8fafc;
+            padding: 4px 8px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        .color-swatch-picker {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: transparent;
+            padding: 0;
+        }
+
+        .preset-chips-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .preset-chip-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 0 1px #cbd5e1;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            outline: none;
+        }
+        .preset-chip-btn:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 0 2px #0f172a;
+        }
+
+        .btn-save-theme {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #0f172a;
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-save-theme:hover {
+            background: #1e293b;
         }
 
         /* ID Card Container */
@@ -79,7 +215,7 @@
             position: relative;
             width: 100%;
             height: 195px;
-            background: #0f172a;
+            background: var(--id-header-bg);
             overflow: hidden;
         }
 
@@ -121,7 +257,9 @@
         .id-school-logo-box img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
+            background: #ffffff;
+            padding: 2px;
             display: block;
         }
 
@@ -157,9 +295,9 @@
             width: 150px;
             height: 150px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #0052cc 0%, #0080ff 100%);
+            background: linear-gradient(135deg, var(--id-primary) 0%, var(--id-secondary) 100%);
             padding: 5px;
-            box-shadow: 0 8px 20px rgba(0, 82, 204, 0.35);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
         }
 
         .id-photo-inner-ring {
@@ -198,7 +336,7 @@
         .id-student-name {
             font-size: 19px;
             font-weight: 900;
-            color: #0040a8;
+            color: var(--id-primary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: 2px;
@@ -216,7 +354,7 @@
         .id-divider-line {
             width: 65%;
             height: 2px;
-            background: #0052cc;
+            background: var(--id-primary);
             margin: 8px 0 14px;
             border-radius: 2px;
         }
@@ -243,14 +381,14 @@
             width: 36px;
             height: 36px;
             border-radius: 50%;
-            background: #0052cc;
+            background: var(--id-primary);
             color: #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 18px;
             flex-shrink: 0;
-            box-shadow: 0 4px 10px rgba(0, 82, 204, 0.25);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
         }
 
         .id-info-cols {
@@ -285,7 +423,7 @@
         /* Back Card Specifics */
         .id-card-back-topbar {
             height: 14px;
-            background: #0052cc;
+            background: var(--id-primary);
             width: 100%;
         }
 
@@ -394,7 +532,7 @@
 
         .id-card-back-footer {
             height: 22px;
-            background: #0f172a;
+            background: var(--id-header-bg);
             width: 100%;
         }
 
@@ -420,20 +558,55 @@
 </head>
 <body>
 
+    <!-- Executive Customization & Print Bar -->
     <div class="no-print">
-        <a href="<?= url('admin/applications/' . $student['id']) ?>" class="btn-action btn-action-back"><i class="ti ti-arrow-left"></i> Back to Student Profile</a>
-        <button onclick="window.print()" class="btn-action"><i class="ti ti-printer"></i> Print ID Card</button>
+        <div class="action-bar-row">
+            <div class="action-bar-left">
+                <a href="<?= url('admin/applications/' . $student['id']) ?>" class="btn-action btn-action-back"><i class="ti ti-arrow-left"></i> Back to Student Profile</a>
+                <button onclick="window.print()" class="btn-action"><i class="ti ti-printer"></i> Print ID Card</button>
+            </div>
+            <div class="action-bar-right">
+                <span id="saveStatusToast" style="display:none; font-size:13px; font-weight:700; color:#059669;"><i class="ti ti-circle-check-filled"></i> Saved as Default</span>
+                <button type="button" id="saveIdColorBtn" class="btn-save-theme">
+                    <i class="ti ti-device-floppy"></i> Save Color as School Default
+                </button>
+            </div>
+        </div>
+
+        <div class="color-palette-toolbar">
+            <div class="color-toolbar-title">
+                <i class="ti ti-palette" style="color:var(--id-primary); font-size:18px;"></i>
+                <span>ID Card Color Theme:</span>
+            </div>
+
+            <div class="color-inputs-wrap">
+                <div class="color-input-badge" title="Primary Header & Accent Color">
+                    <span>Primary:</span>
+                    <input type="color" id="primaryColorPicker" value="<?= e($idPrimaryColor) ?>" class="color-swatch-picker">
+                </div>
+                <div class="color-input-badge" title="Gradient Highlight Wave">
+                    <span>Accent:</span>
+                    <input type="color" id="secondaryColorPicker" value="<?= e($idSecondaryColor) ?>" class="color-swatch-picker">
+                </div>
+                <div class="color-input-badge" title="Header Dark/Background Base">
+                    <span>Base:</span>
+                    <input type="color" id="headerBgPicker" value="<?= e($idHeaderBg) ?>" class="color-swatch-picker">
+                </div>
+            </div>
+
+            <div class="preset-chips-container" title="Quick Color Palettes">
+                <button type="button" class="preset-chip-btn" style="background:#0b3d91;" data-primary="#0b3d91" data-secondary="#1e40af" data-header="#0f172a" title="Navy Blue"></button>
+                <button type="button" class="preset-chip-btn" style="background:#047857;" data-primary="#047857" data-secondary="#10b981" data-header="#064e3b" title="Emerald Green"></button>
+                <button type="button" class="preset-chip-btn" style="background:#6b21a8;" data-primary="#6b21a8" data-secondary="#9333ea" data-header="#3b0764" title="Royal Purple"></button>
+                <button type="button" class="preset-chip-btn" style="background:#991b1b;" data-primary="#991b1b" data-secondary="#dc2626" data-header="#450a0a" title="Crimson Red"></button>
+                <button type="button" class="preset-chip-btn" style="background:#b45309;" data-primary="#b45309" data-secondary="#f59e0b" data-header="#451a03" title="Gold Amber"></button>
+                <button type="button" class="preset-chip-btn" style="background:#0f766e;" data-primary="#0f766e" data-secondary="#06b6d4" data-header="#134e4a" title="Deep Teal"></button>
+                <button type="button" class="preset-chip-btn" style="background:#334155;" data-primary="#334155" data-secondary="#64748b" data-header="#0f172a" title="Slate Onyx"></button>
+            </div>
+        </div>
     </div>
 
     <?php
-    $fullSchoolName = setting('school_name', 'BLUEFIELD INTERNATIONAL SCHOOL');
-    $nameParts = explode(' ', trim($fullSchoolName), 2);
-    $mainName = strtoupper($nameParts[0] ?? 'BLUEFIELD');
-    $subName  = strtoupper($nameParts[1] ?? 'INTERNATIONAL SCHOOL');
-
-    // School Logo URL calculation
-    $logoUrl = school_logo_url() ?: '';
-
     // QR Code Website Link Generation
     $token = !empty($student['qr_data']) ? $student['qr_data'] : 'ATTENDANCE-STD-' . $student['id'];
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
@@ -476,11 +649,11 @@
                 <svg class="id-header-wave" viewBox="0 0 330 195" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
                     <defs>
                         <linearGradient id="blueWaveGradAdmin" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" stop-color="#0052cc" />
-                            <stop offset="100%" stop-color="#0066ff" />
+                            <stop id="waveStop1" offset="0%" stop-color="<?= e($idPrimaryColor) ?>" />
+                            <stop id="waveStop2" offset="100%" stop-color="<?= e($idSecondaryColor) ?>" />
                         </linearGradient>
                     </defs>
-                    <rect width="330" height="195" fill="#0f172a" />
+                    <rect id="waveHeaderRect" width="330" height="195" fill="<?= e($idHeaderBg) ?>" />
                     <path d="M 0,0 L 210,0 C 170,70 110,120 0,165 Z" fill="url(#blueWaveGradAdmin)" />
                     <path d="M 0,0 L 140,0 C 240,60 290,130 0,195 Z" fill="url(#blueWaveGradAdmin)" opacity="0.85" />
                     <path d="M 0,195 C 100,135 230,190 330,140 L 330,195 Z" fill="#ffffff" />
@@ -491,28 +664,10 @@
                         <?php if (!empty($logoUrl)): ?>
                             <img src="<?= e($logoUrl) ?>" alt="School Logo" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
                             <div style="display:none;">
-                                <svg width="32" height="32" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M18 2 L33 10.5 V25.5 L18 34 L3 25.5 V10.5 Z" stroke="#00d2ff" stroke-width="3" fill="none" stroke-linejoin="round"/>
-                                    <path d="M18 9 L27 14.25 V21.75 L18 27 L9 21.75 V14.25 Z" fill="url(#bluefieldLogoGradAdmin)" />
-                                    <defs>
-                                        <linearGradient id="bluefieldLogoGradAdmin" x1="9" y1="9" x2="27" y2="27">
-                                            <stop offset="0%" stop-color="#00d2ff"/>
-                                            <stop offset="100%" stop-color="#0052cc"/>
-                                        </linearGradient>
-                                    </defs>
-                                </svg>
+                                <i class="ti ti-school" style="font-size:24px;"></i>
                             </div>
                         <?php else: ?>
-                            <svg width="32" height="32" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M18 2 L33 10.5 V25.5 L18 34 L3 25.5 V10.5 Z" stroke="#00d2ff" stroke-width="3" fill="none" stroke-linejoin="round"/>
-                                <path d="M18 9 L27 14.25 V21.75 L18 27 L9 21.75 V14.25 Z" fill="url(#bluefieldLogoGradAdminFallback)" />
-                                <defs>
-                                    <linearGradient id="bluefieldLogoGradAdminFallback" x1="9" y1="9" x2="27" y2="27">
-                                        <stop offset="0%" stop-color="#00d2ff"/>
-                                        <stop offset="100%" stop-color="#0052cc"/>
-                                    </linearGradient>
-                                </defs>
-                            </svg>
+                            <i class="ti ti-school" style="font-size:24px;"></i>
                         <?php endif; ?>
                     </div>
                     <div class="id-school-title-text">
@@ -606,9 +761,9 @@
                         <i class="ti ti-phone-call"></i> IN CASE OF EMERGENCY
                     </div>
                     <div class="id-emergency-details">
-                        Parent/Guardian: <?= e($student['parent_name'] ?: ($student['emergency_contact_name'] ?? 'Mr Azzan')) ?><br>
-                        Phone: <?= e($student['parent_phone'] ?: ($student['emergency_contact_phone'] ?? '07081306993')) ?><br>
-                        Address: <?= e($student['home_address'] ?: 'akobo OLORUDA') ?>
+                        Parent/Guardian: <?= e($student['parent_name'] ?: ($student['emergency_contact_name'] ?? 'Parent / Guardian')) ?><br>
+                        Phone: <?= e($student['parent_phone'] ?: ($student['emergency_contact_phone'] ?? '08000000000')) ?><br>
+                        Address: <?= e($student['home_address'] ?: 'School Residential District') ?>
                     </div>
                 </div>
 
@@ -634,6 +789,89 @@
             <div class="id-card-back-footer"></div>
         </div>
     </div>
+
+    <script>
+    (function() {
+        const root = document.documentElement;
+        const primaryPicker = document.getElementById('primaryColorPicker');
+        const secondaryPicker = document.getElementById('secondaryColorPicker');
+        const headerBgPicker = document.getElementById('headerBgPicker');
+        const stop1 = document.getElementById('waveStop1');
+        const stop2 = document.getElementById('waveStop2');
+        const rect = document.getElementById('waveHeaderRect');
+        const saveBtn = document.getElementById('saveIdColorBtn');
+        const toast = document.getElementById('saveStatusToast');
+
+        function applyTheme(primary, secondary, headerBg) {
+            root.style.setProperty('--id-primary', primary);
+            root.style.setProperty('--id-secondary', secondary);
+            root.style.setProperty('--id-header-bg', headerBg);
+            if (stop1) stop1.setAttribute('stop-color', primary);
+            if (stop2) stop2.setAttribute('stop-color', secondary);
+            if (rect) rect.setAttribute('fill', headerBg);
+            if (primaryPicker) primaryPicker.value = primary;
+            if (secondaryPicker) secondaryPicker.value = secondary;
+            if (headerBgPicker) headerBgPicker.value = headerBg;
+        }
+
+        if (primaryPicker) {
+            primaryPicker.addEventListener('input', function() {
+                applyTheme(this.value, secondaryPicker.value, headerBgPicker.value);
+            });
+        }
+        if (secondaryPicker) {
+            secondaryPicker.addEventListener('input', function() {
+                applyTheme(primaryPicker.value, this.value, headerBgPicker.value);
+            });
+        }
+        if (headerBgPicker) {
+            headerBgPicker.addEventListener('input', function() {
+                applyTheme(primaryPicker.value, secondaryPicker.value, this.value);
+            });
+        }
+
+        document.querySelectorAll('.preset-chip-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                applyTheme(this.dataset.primary, this.dataset.secondary, this.dataset.header);
+            });
+        });
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async function() {
+                const origHtml = saveBtn.innerHTML;
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Saving...';
+
+                try {
+                    const formData = new FormData();
+                    formData.append('csrf_token', '<?= csrf_token() ?>');
+                    formData.append('id_card_primary_color', primaryPicker.value);
+                    formData.append('id_card_secondary_color', secondaryPicker.value);
+                    formData.append('id_card_header_bg', headerBgPicker.value);
+
+                    const res = await fetch('<?= url('admin/settings/save-id-card-color') ?>', {
+                        method: 'POST',
+                        body: formData,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        toast.style.display = 'inline-flex';
+                        setTimeout(() => { toast.style.display = 'none'; }, 3500);
+                    } else {
+                        alert(data.message || 'Error saving ID card color.');
+                    }
+                } catch (e) {
+                    alert('Network error while saving color.');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = origHtml;
+                }
+            });
+        }
+    })();
+    </script>
 
 </body>
 </html>
