@@ -17,11 +17,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($password !== $confirmPassword) {
         $errorMsg = "Passwords do not match.";
     } else {
-        $_SESSION['install_admin'] = [
+        $adminData = [
             'name' => $fullName,
             'email' => $email,
-            'password' => password_hash($password, PASSWORD_BCRYPT)
+            'password' => password_hash($password, PASSWORD_BCRYPT),
+            'plain_password' => $password
         ];
+        $_SESSION['install_admin'] = $adminData;
+        if (function_exists('save_installer_state')) {
+            save_installer_state(['install_admin' => $adminData]);
+        }
 
         if (!headers_sent()) {
             header('Location: index.php?step=5');

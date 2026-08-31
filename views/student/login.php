@@ -1,7 +1,9 @@
 <div class="auth-card">
     <div class="logo-area">
-        <?php if (setting('school_logo')): ?>
-            <img src="<?= url('uploads/' . setting('school_logo')) ?>" alt="Logo" style="width:64px;height:64px;border-radius:16px;object-fit:cover;margin-bottom:15px;box-shadow:0 10px 20px rgba(0,0,0,0.2);">
+        <?php $logoUrl = school_logo_url(); ?>
+        <?php if ($logoUrl): ?>
+            <img src="<?= e($logoUrl) ?>" alt="Logo" style="width:64px;height:64px;border-radius:16px;object-fit:contain;background:#fff;padding:4px;margin-bottom:15px;box-shadow:0 10px 20px rgba(0,0,0,0.2);" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+            <div class="logo-circle" style="display:none;"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></div>
         <?php else: ?>
             <div class="logo-circle"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></div>
         <?php endif; ?>

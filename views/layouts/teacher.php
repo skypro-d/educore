@@ -87,8 +87,10 @@
 <?php if ($teacherSession): ?>
 <aside class="teacher-sidebar" id="teacherSidebar">
     <div class="brand">
-        <?php if (setting('school_logo')): ?>
-            <img src="<?= url('uploads/' . setting('school_logo')) ?>" alt="Logo" style="width:42px;height:42px;border-radius:10px;object-fit:cover;">
+        <?php $logoUrl = school_logo_url(); ?>
+        <?php if ($logoUrl): ?>
+            <img src="<?= e($logoUrl) ?>" alt="Logo" style="width:42px;height:42px;border-radius:10px;object-fit:contain;background:#fff;padding:2px;" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+            <div class="logo-icon" style="display:none;"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></div>
         <?php else: ?>
             <div class="logo-icon"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></div>
         <?php endif; ?>

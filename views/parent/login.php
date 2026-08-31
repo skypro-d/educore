@@ -1,8 +1,10 @@
 <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#061a40 0%,#0b3d91 100%);padding:20px;">
     <div style="background:#fff;border-radius:20px;padding:44px 40px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.25);">
         <div style="text-align:center;margin-bottom:32px;">
-            <?php if (setting('school_logo')): ?>
-                <img src="<?= url('uploads/' . setting('school_logo')) ?>" alt="Logo" style="height:60px;margin-bottom:12px;border-radius:10px;">
+            <?php $logoUrl = school_logo_url(); ?>
+            <?php if ($logoUrl): ?>
+                <img src="<?= e($logoUrl) ?>" alt="Logo" style="height:60px;max-height:60px;max-width:140px;object-fit:contain;margin-bottom:12px;border-radius:10px;background:#fff;padding:2px;" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+                <div style="display:none;width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,#0b3d91,#1a6dd8);align-items:center;justify-content:center;margin:0 auto 12px;"><i class="ti ti-users" style="font-size:28px;color:#fff;"></i></div>
             <?php else: ?>
                 <div style="width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,#0b3d91,#1a6dd8);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;"><i class="ti ti-users" style="font-size:28px;color:#fff;"></i></div>
             <?php endif; ?>

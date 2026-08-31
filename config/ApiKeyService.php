@@ -254,7 +254,7 @@ final class ApiKeyService
         $sigString = $params['domain'] . '|' . $params['installation_id'] . '|' . $apiKey . '|' . $timestamp;
         $signature = hash_hmac('sha256', $sigString, $signingSecret ?: 'fallback_sign_key');
 
-        $baseUrl = defined('EDUCORE_LIVE_URL') ? EDUCORE_LIVE_URL : 'http://localhost/EduCore-LicenseServer';
+        $baseUrl = defined('EDUCORE_LIVE_URL') ? EDUCORE_LIVE_URL : 'https://educore.skysaveings.com.ng';
         
         $urlsToTry = [];
         $urlsToTry[] = $baseUrl . '/index.php?route=' . ltrim($endpointRoute, '/');

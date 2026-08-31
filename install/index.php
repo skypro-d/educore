@@ -24,6 +24,34 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+function get_installer_state(): array
+{
+    $cacheFile = dirname(__DIR__) . '/config/cache/installer_state.json';
+    $state = $_SESSION['installer_state'] ?? [];
+    if (file_exists($cacheFile)) {
+        $raw = @file_get_contents($cacheFile);
+        if ($raw) {
+            $json = json_decode($raw, true);
+            if (is_array($json)) {
+                $state = array_merge($json, $state);
+            }
+        }
+    }
+    return $state;
+}
+
+function save_installer_state(array $data): void
+{
+    $cacheDir = dirname(__DIR__) . '/config/cache';
+    if (!is_dir($cacheDir)) {
+        @mkdir($cacheDir, 0755, true);
+    }
+    $current = get_installer_state();
+    $merged = array_merge($current, $data);
+    $_SESSION['installer_state'] = $merged;
+    @file_put_contents($cacheDir . '/installer_state.json', json_encode($merged, JSON_PRETTY_PRINT));
+}
+
 $lockFile = __DIR__ . '/installation.lock';
 
 if (isset($_POST['unlock_installer']) || isset($_GET['unlock'])) {

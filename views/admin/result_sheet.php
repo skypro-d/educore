@@ -54,8 +54,9 @@
 <div class="page">
     <!-- Header -->
     <div class="school-header">
-        <?php if (setting('school_logo')): ?>
-            <img class="logo" src="<?= url('uploads/'.setting('school_logo')) ?>" alt="Logo">
+        <?php $logoUrl = school_logo_url(); ?>
+        <?php if ($logoUrl): ?>
+            <img class="logo" src="<?= e($logoUrl) ?>" alt="Logo" onerror="this.style.display='none';">
         <?php endif; ?>
         <h1><?= e(setting('school_name', 'School Name')) ?></h1>
         <p><?= e(setting('school_address', '')) ?> &nbsp;|&nbsp; <?= e(setting('school_phone','')) ?></p>

@@ -280,6 +280,31 @@ function settings_map(): array
     }
 }
 
+function school_logo_url(): ?string
+{
+    $logo = trim(setting('school_logo', '') ?: setting('logo', ''));
+    if ($logo === '') {
+        return null;
+    }
+    if (str_starts_with($logo, 'http://') || str_starts_with($logo, 'https://')) {
+        return $logo;
+    }
+    $clean = ltrim(str_replace(['uploads/', 'uploads\\'], '', $logo), '/\\');
+    if ($clean === '') {
+        return null;
+    }
+    if (defined('UPLOAD_PATH') && is_dir(UPLOAD_PATH)) {
+        if (!file_exists(UPLOAD_PATH . $clean)) {
+            if (file_exists(UPLOAD_PATH . basename($clean))) {
+                $clean = basename($clean);
+            } else {
+                return null;
+            }
+        }
+    }
+    return url('uploads/' . $clean);
+}
+
 function brand_css(): string
 {
     $primary = setting('primary_color', '#0b3d91');

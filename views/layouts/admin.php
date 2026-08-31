@@ -8,15 +8,24 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-    <link href="<?= url('assets/css/style.css') ?>" rel="stylesheet">
+    <link href="<?= url('assets/css/style.css?v=' . time()) ?>" rel="stylesheet">
 </head>
 <body class="admin-shell">
 <button class="admin-sidebar-overlay" id="adminSidebarOverlay" type="button" aria-label="Close admin menu"></button>
 <aside class="sidebar" id="adminSidebar">
     <?php $current = trim($_GET['route'] ?? 'dashboard', '/'); ?>
-    <div class="brand sidebar-logo">
-        <div class="icon"><i class="ti ti-school" data-fallback="S"></i></div>
-        <span><?= e(setting('school_name', 'Admissions')) ?></span>
+    <?php $logoUrl = school_logo_url(); ?>
+    <div class="brand sidebar-logo" style="display:flex;align-items:center;gap:10px;margin-bottom:1.5rem;min-width:0;">
+        <?php if ($logoUrl): ?>
+            <img src="<?= e($logoUrl) ?>" alt="Logo" class="sidebar-logo-img" style="width:40px !important;height:40px !important;max-width:40px !important;max-height:40px !important;object-fit:contain !important;border-radius:8px !important;background:#fff !important;padding:2px !important;border:1px solid #e2e8f0 !important;flex-shrink:0 !important;display:block !important;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <div class="icon" style="display:none;width:40px;height:40px;border-radius:8px;background:var(--brand-primary);align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;"><i class="ti ti-school" data-fallback="S"></i></div>
+        <?php else: ?>
+            <div class="icon" style="width:40px;height:40px;border-radius:8px;background:var(--brand-primary);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;"><i class="ti ti-school" data-fallback="S"></i></div>
+        <?php endif; ?>
+        <div class="sidebar-brand-info" style="display:flex;flex-direction:column;min-width:0;flex:1;overflow:hidden;">
+            <span class="sidebar-brand-name" title="<?= e(setting('school_name', 'EduCore Portal')) ?>" style="font-size:13px;font-weight:700;color:#0f172a;line-height:1.25;word-break:break-word;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;"><?= e(setting('school_name', 'EduCore Portal')) ?></span>
+            <span class="sidebar-brand-badge" style="font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-top:1px;">Admin Portal</span>
+        </div>
         <button class="sidebar-close" id="adminSidebarClose" type="button" aria-label="Close admin menu"><span aria-hidden="true">X</span></button>
     </div>
     <div class="nav-section">Main</div>

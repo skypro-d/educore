@@ -19,7 +19,8 @@ $letterClosing = setting('admission_letter_closing', 'Congratulations, and welco
 ?>
 <div class="letter-sheet mx-auto">
     <div class="letter-head">
-        <?php if (setting('school_logo')): ?><img class="nav-logo" src="<?= url('uploads/' . setting('school_logo')) ?>" alt="Logo"><?php else: ?><span class="logo-mark">S</span><?php endif; ?>
+        <?php $logoUrl = school_logo_url(); ?>
+        <?php if ($logoUrl): ?><img class="nav-logo" src="<?= e($logoUrl) ?>" alt="Logo" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-grid';"><span class="logo-mark" style="display:none;"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></span><?php else: ?><span class="logo-mark"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></span><?php endif; ?>
         <div>
             <h1><?= e(setting('school_name', 'Bluefield International School')) ?></h1>
             <p><?= e(setting('school_address', 'No. 1 Excellence Avenue, Lagos, Nigeria')) ?></p>

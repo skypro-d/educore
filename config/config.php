@@ -102,7 +102,7 @@ define('DB_USER', getEnvConfig('DB_USER', $isLocalHost ? 'root' : ''));
 define('DB_PASS', getEnvConfig('DB_PASS', ''));
 
 // EduCore Live & Licensing Configuration
-define('EDUCORE_LIVE_URL', rtrim(getEnvConfig('EDUCORE_LIVE_URL', getEnvConfig('LICENSE_SERVER_URL', 'http://localhost/EduCore-LicenseServer')), '/'));
+define('EDUCORE_LIVE_URL', rtrim(getEnvConfig('EDUCORE_LIVE_URL', getEnvConfig('LICENSE_SERVER_URL', 'https://educore.skysaveings.com.ng')), '/'));
 define('INSTALLATION_ID', getEnvConfig('INSTALLATION_ID', ''));
 define('RELEASE_CHANNEL', getEnvConfig('RELEASE_CHANNEL', EDUCORE_DEFAULT_CHANNEL));
 define('OFFLINE_GRACE_DAYS', (int)getEnvConfig('OFFLINE_GRACE_DAYS', '30'));

@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($schoolName) || empty($schoolEmail)) {
         $errorMsg = "School Name and Email are required.";
     } else {
-        $_SESSION['install_school'] = [
+        $schoolData = [
             'name' => $schoolName,
             'email' => $schoolEmail,
             'phone' => $schoolPhone,
@@ -25,6 +25,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'timezone' => $timezone,
             'session' => $academicSession
         ];
+        $_SESSION['install_school'] = $schoolData;
+        if (function_exists('save_installer_state')) {
+            save_installer_state(['install_school' => $schoolData]);
+        }
 
         if (!headers_sent()) {
             header('Location: index.php?step=4');

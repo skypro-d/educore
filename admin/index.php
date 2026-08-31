@@ -119,6 +119,9 @@ switch ($route) {
     case 'settings':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $controller->saveSettings() : $controller->settings();
         break;
+    case 'settings/test-smtp':
+        $controller->testSmtp();
+        break;
     case 'form-builder':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $controller->saveFormBuilder() : $controller->formBuilder();
         break;

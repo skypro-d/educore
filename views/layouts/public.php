@@ -13,7 +13,13 @@
 <nav class="navbar navbar-expand-lg navbar-dark app-nav sticky-top">
     <div class="container">
         <a class="navbar-brand fw-bold" href="<?= url() ?>">
-            <?php if (setting('school_logo')): ?><img class="nav-logo" src="<?= url('uploads/' . setting('school_logo')) ?>" alt="<?= e($schoolName) ?>"><?php else: ?><span class="logo-mark">S</span><?php endif; ?> <?= e($schoolName) ?>
+            <?php $logoUrl = school_logo_url(); ?>
+            <?php if ($logoUrl): ?>
+                <img class="nav-logo" src="<?= e($logoUrl) ?>" alt="<?= e($schoolName) ?>" style="width:38px;height:38px;object-fit:contain;border-radius:8px;background:#fff;padding:2px;" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-grid';">
+                <span class="logo-mark" style="display:none;"><?= strtoupper(substr($schoolName, 0, 1)) ?></span>
+            <?php else: ?>
+                <span class="logo-mark"><?= strtoupper(substr($schoolName, 0, 1)) ?></span>
+            <?php endif; ?> <?= e($schoolName) ?>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav"><span class="navbar-toggler-icon"></span></button>
         <div class="collapse navbar-collapse" id="nav">

@@ -379,16 +379,7 @@ $mainName = strtoupper($nameParts[0] ?? 'BLUEFIELD');
 $subName  = strtoupper($nameParts[1] ?? 'INTERNATIONAL SCHOOL');
 
 // School Logo URL calculation
-$logoSetting = setting('school_logo');
-$logoUrl = '';
-if ($logoSetting) {
-    if (str_starts_with($logoSetting, 'http://') || str_starts_with($logoSetting, 'https://')) {
-        $logoUrl = $logoSetting;
-    } else {
-        $cleanLogo = ltrim(str_replace('uploads/', '', $logoSetting), '/');
-        $logoUrl = url('uploads/' . $cleanLogo);
-    }
-}
+$logoUrl = school_logo_url() ?: '';
 
 // QR Code Website Link Generation
 $token = !empty($student['qr_data']) ? $student['qr_data'] : 'ATTENDANCE-STD-' . $student['id'];

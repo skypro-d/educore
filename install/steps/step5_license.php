@@ -16,12 +16,19 @@ if (empty($_SESSION['install_id'])) {
 }
 $installationId = $_SESSION['install_id'];
 
+$defaultLiveUrl = 'https://educore.skysaveings.com.ng';
 $licenseKey = $_POST['license_key'] ?? ($_SESSION['install_license']['key'] ?? '');
-$liveServerUrl = $_POST['license_server_url'] ?? ($_SESSION['install_license']['server_url'] ?? 'http://localhost/EduCore-LicenseServer');
+$liveServerUrl = $_POST['license_server_url'] ?? ($_SESSION['install_license']['server_url'] ?? $defaultLiveUrl);
+if ($liveServerUrl === 'http://localhost/EduCore-LicenseServer' || empty($liveServerUrl)) {
+    $liveServerUrl = $defaultLiveUrl;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $licenseKey = trim($_POST['license_key'] ?? '');
-    $inputServerUrl = rtrim(trim($_POST['license_server_url'] ?? 'http://localhost/EduCore-LicenseServer'), '/');
+    $inputServerUrl = rtrim(trim($_POST['license_server_url'] ?? $defaultLiveUrl), '/');
+    if (empty($inputServerUrl) || $inputServerUrl === 'http://localhost/EduCore-LicenseServer') {
+        $inputServerUrl = $defaultLiveUrl;
+    }
 
     if (empty($licenseKey)) {
         $errorMsg = "Please enter a valid EduCore Activation / License Key.";
@@ -99,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!empty($data['status']) && ($data['status'] === 'active' || $data['status'] === 'success')) {
                     $activationSuccess = true;
                     $licenseData = $data;
-                    
+
                     // Deduce the working base URL
                     if (str_contains($testApiUrl, '/index.php?route=')) {
                         $effectiveWorkingUrl = explode('/index.php?route=', $testApiUrl)[0];
@@ -123,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($activationSuccess) {
-            $_SESSION['install_license'] = [
+            $licenseDataRecord = [
                 'key' => $licenseKey,
                 'server_url' => $effectiveWorkingUrl,
                 'domain' => $domain,
@@ -138,6 +145,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'raw_response' => $licenseData,
                 'activated_at' => date('Y-m-d H:i:s')
             ];
+            $_SESSION['install_license'] = $licenseDataRecord;
+            if (function_exists('save_installer_state')) {
+                save_installer_state(['install_license' => $licenseDataRecord]);
+            }
 
             if (!headers_sent()) {
                 header('Location: index.php?step=6');
@@ -151,7 +162,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="mb-4">
     <h4 class="fw-bold mb-1 text-white">Step 5: EduCore Live Activation</h4>
-    <p class="text-muted small">Connect this school installation node to EduCore Live central control server using your purchased activation key.</p>
+    <p class="text-muted small">Connect this school installation node to EduCore Live central control server using your
+        purchased activation key.</p>
 </div>
 
 <?php if ($errorMsg): ?>
@@ -170,28 +182,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         <div class="col-md-6">
             <label class="form-label">Stable Installation ID</label>
-            <input type="text" class="form-control font-monospace" value="<?= htmlspecialchars($installationId) ?>" readonly disabled>
+            <input type="text" class="form-control font-monospace" value="<?= htmlspecialchars($installationId) ?>"
+                readonly disabled>
             <div class="form-text text-muted">Unique persistent identifier for this school node.</div>
         </div>
         <div class="col-md-12">
             <label class="form-label">EduCore Live Server URL</label>
-            <input type="text" name="license_server_url" class="form-control" value="<?= htmlspecialchars($liveServerUrl) ?>" required placeholder="http://educore.skysaveings.com.ng or http://localhost/EduCore-LicenseServer">
+            <input type="url" name="license_server_url" class="form-control"
+                value="<?= htmlspecialchars($liveServerUrl) ?>" required
+                placeholder="https://educore.skysaveings.com.ng">
             <div class="form-text text-muted">Central EduCore Live control endpoint:
-                <ul class="mb-0 mt-1 ps-3 small text-muted">
-                    <li>For Localhost: <code>http://localhost/EduCore-LicenseServer</code></li>
-                    <li>For Subdomain / Live Server: <code>http://educore.skysaveings.com.ng</code> (or <code>https://...</code>)</li>
-                </ul>
+                <div class="mt-1 small text-info">
+                    <i class="bi bi-shield-lock-fill me-1"></i> Production Server:
+                    <code>https://educore.skysaveings.com.ng</code>
+                </div>
             </div>
         </div>
         <div class="col-12">
             <label class="form-label">EduCore Activation Key</label>
-            <input type="text" name="license_key" class="form-control font-monospace" value="<?= htmlspecialchars($licenseKey) ?>" placeholder="EDC-XXXX-XXXX-XXXX or SKY-PRO-4444-5555-6666" required>
-            <div class="form-text text-muted">Enter the activation key issued in your EduCore Live customer portal after purchase. (Demo keys: <code>SKY-BASIC-1111-2222-3333</code>, <code>SKY-PRO-4444-5555-6666</code>, <code>SKY-ENT-7777-8888-9999</code>)</div>
+            <input type="text" name="license_key" class="form-control font-monospace"
+                value="<?= htmlspecialchars($licenseKey) ?>" placeholder="EDC-XXXX-XXXX-XXXX or SKY-PRO-4444-5555-6666"
+                required>
+            <div class="form-text text-muted">Enter the activation key issued in your EduCore Live customer portal after
+                purchase. (Demo keys: <code>SKY-BASIC-1111-2222-3333</code>, <code>SKY-PRO-4444-5555-6666</code>,
+                <code>SKY-ENT-7777-8888-9999</code>)
+            </div>
         </div>
     </div>
 
     <div class="installer-footer">
         <a href="index.php?step=4" class="btn btn-secondary-custom"><i class="bi bi-arrow-left me-1"></i> Back</a>
-        <button type="submit" name="action" value="activate_license" class="btn btn-primary-custom">Verify & Register Node <i class="bi bi-shield-check ms-1"></i></button>
+        <button type="submit" name="action" value="activate_license" class="btn btn-primary-custom">Verify & Register
+            Node <i class="bi bi-shield-check ms-1"></i></button>
     </div>
 </form>

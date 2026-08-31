@@ -55,8 +55,10 @@ $isFieldRequired = function($key, $default = 'optional') use ($getFieldStatus) {
         <div class="container">
             <div class="admission-form-brand">
                 <div class="admission-form-logo">
-                    <?php if (setting('school_logo')): ?>
-                        <img src="<?= url('uploads/' . setting('school_logo')) ?>" alt="<?= e(setting('school_name', APP_NAME)) ?>">
+                    <?php $logoUrl = school_logo_url(); ?>
+                    <?php if ($logoUrl): ?>
+                        <img src="<?= e($logoUrl) ?>" alt="<?= e(setting('school_name', APP_NAME)) ?>" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                        <span style="display:none;"><?= e(strtoupper(substr(setting('school_name', APP_NAME), 0, 1))) ?></span>
                     <?php else: ?>
                         <?= e(strtoupper(substr(setting('school_name', APP_NAME), 0, 1))) ?>
                     <?php endif; ?>

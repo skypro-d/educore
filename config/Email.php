@@ -88,6 +88,106 @@ final class Email
     }
 
     /**
+     * Test SMTP configuration by sending a diagnostic test email.
+     *
+     * @param array $config Configuration dictionary (keys: smtp_host, smtp_port, smtp_username, smtp_password, smtp_secure, smtp_from_email, smtp_from_name)
+     * @param string $to Recipient email address
+     * @return array{success:bool, message:string, debug:string}
+     */
+    public static function testConnection(array $config, string $to): array
+    {
+        if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'message' => 'Please provide a valid recipient email address for testing.', 'debug' => ''];
+        }
+
+        if (!self::loadPhpMailer()) {
+            return ['success' => false, 'message' => 'PHPMailer library files could not be loaded from server.', 'debug' => ''];
+        }
+
+        $host = trim($config['smtp_host'] ?? smtp_setting('smtp_host', SMTP_HOST));
+        $port = (int) ($config['smtp_port'] ?? smtp_setting('smtp_port', (string) SMTP_PORT));
+        $username = trim($config['smtp_username'] ?? smtp_setting('smtp_username', SMTP_USERNAME));
+        $password = (string) ($config['smtp_password'] ?? smtp_setting('smtp_password', SMTP_PASSWORD));
+        $secure = strtolower(trim($config['smtp_secure'] ?? smtp_setting('smtp_secure', SMTP_SECURE)));
+        $fromEmail = trim($config['smtp_from_email'] ?? smtp_setting('smtp_from_email', SMTP_FROM_EMAIL));
+        $fromName = trim($config['smtp_from_name'] ?? smtp_setting('smtp_from_name', SMTP_FROM_NAME));
+
+        if (empty($host)) {
+            return ['success' => false, 'message' => 'SMTP Host is required to run test.', 'debug' => ''];
+        }
+
+        $debugOutput = '';
+        try {
+            $mail = new PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host = $host;
+            $mail->SMTPAuth = !empty($username);
+            $mail->Username = $username;
+            $mail->Password = $password;
+            $mail->Port = $port > 0 ? $port : 465;
+            $mail->Timeout = 12;
+
+            // Capture SMTP debug output
+            $mail->SMTPDebug = 2;
+            $mail->Debugoutput = function ($str, $level) use (&$debugOutput) {
+                $debugOutput .= trim($str) . "\n";
+            };
+
+            if ($secure === 'tls' || $port === 587) {
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            } elseif ($secure === 'smtps' || $secure === 'ssl' || $port === 465) {
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            } else {
+                $mail->SMTPAutoTLS = false;
+            }
+
+            // Fallback options for SSL validation on various hosting environments
+            $mail->SMTPOptions = [
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false,
+                    'allow_self_signed' => true
+                ]
+            ];
+
+            $senderEmail = !empty($fromEmail) ? $fromEmail : (!empty($username) ? $username : 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+            $senderName = !empty($fromName) ? $fromName : (defined('APP_NAME') ? APP_NAME : 'EduCore');
+
+            $mail->setFrom($senderEmail, $senderName);
+            $mail->addAddress($to);
+            $mail->isHTML(true);
+            $mail->Subject = 'EduCore SMTP Delivery Test - ' . date('Y-m-d H:i:s');
+
+            $bodyContent = '<p><strong>Great news!</strong></p>'
+                . '<p>Your EduCore SMTP Mail Server is configured correctly and successfully dispatched this email.</p>'
+                . '<div style="background:#f1f5f9; border-radius:8px; padding:16px; margin:16px 0; font-family:monospace; font-size:13px;">'
+                . '<table style="width:100%; border-collapse:collapse;">'
+                . '<tr><td style="padding:4px 0; color:#64748b; width:130px;">SMTP Host:</td><td style="font-weight:bold; color:#0f172a;">' . htmlspecialchars($host) . '</td></tr>'
+                . '<tr><td style="padding:4px 0; color:#64748b;">Port / Encryption:</td><td style="font-weight:bold; color:#0f172a;">' . htmlspecialchars((string)$port) . ' (' . strtoupper($secure) . ')</td></tr>'
+                . '<tr><td style="padding:4px 0; color:#64748b;">Sender Email:</td><td style="font-weight:bold; color:#0f172a;">' . htmlspecialchars($senderEmail) . '</td></tr>'
+                . '<tr><td style="padding:4px 0; color:#64748b;">Timestamp:</td><td style="color:#0f172a;">' . date('Y-m-d H:i:s T') . '</td></tr>'
+                . '</table></div>'
+                . '<p style="color:#64748b; font-size:13px;">System notifications, application receipts, admission letters, and exam updates will now be delivered using these SMTP credentials.</p>';
+
+            $mail->Body = self::wrapEmailHtml('SMTP Test Successful', $bodyContent);
+            $mail->AltBody = "Great news! Your EduCore SMTP Mail Server is configured correctly. Tested at " . date('Y-m-d H:i:s');
+            $mail->send();
+
+            return [
+                'success' => true,
+                'message' => "SMTP Verified! Test email successfully delivered to {$to}.",
+                'debug'   => $debugOutput
+            ];
+        } catch (Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'SMTP Delivery Failed: ' . $e->getMessage(),
+                'debug'   => $debugOutput . "\nException Details: " . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
      * Load PHPMailer files using existing autoload or manual fallbacks.
      */
     private static function loadPhpMailer(): bool

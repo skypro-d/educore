@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/Email.php';
 require_once __DIR__ . '/../config/SmsService.php';
 require_once __DIR__ . '/../config/AttendanceRules.php';
 require_once __DIR__ . '/../models/AdminUser.php';
@@ -443,7 +444,54 @@ final class AdminController
         $this->saveBrandFile('school_logo', 'branding');
         $this->saveBrandFile('favicon', 'branding');
         flash('success', 'Settings updated.');
-        redirect('admin/settings');
+        
+        $activeTab = trim((string) ($_POST['active_tab'] ?? ''));
+        if (!empty($activeTab)) {
+            redirect('admin/settings#' . urlencode($activeTab));
+        } else {
+            redirect('admin/settings');
+        }
+    }
+
+    public function testSmtp(): void
+    {
+        require_permission('settings');
+        verify_csrf();
+
+        $to = trim($_POST['test_email'] ?? '');
+        if (empty($to)) {
+            $to = $_SESSION['admin']['email'] ?? 'admin@school.com';
+        }
+
+        $config = [
+            'smtp_host'       => $_POST['smtp_host'] ?? '',
+            'smtp_port'       => $_POST['smtp_port'] ?? '',
+            'smtp_secure'     => $_POST['smtp_secure'] ?? '',
+            'smtp_username'   => $_POST['smtp_username'] ?? '',
+            'smtp_password'   => $_POST['smtp_password'] ?? '',
+            'smtp_from_email' => $_POST['smtp_from_email'] ?? '',
+            'smtp_from_name'  => $_POST['smtp_from_name'] ?? ''
+        ];
+
+        $result = Email::testConnection($config, $to);
+
+        // Return JSON if requested via AJAX or Header
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+            || isset($_POST['ajax']) || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'));
+
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($result);
+            exit;
+        }
+
+        if ($result['success']) {
+            flash('success', $result['message']);
+        } else {
+            flash('danger', $result['message']);
+        }
+
+        redirect('admin/settings#tab-smtp');
     }
 
     public function formBuilder(): void

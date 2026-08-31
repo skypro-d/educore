@@ -12,15 +12,24 @@ $dbPass = $_POST['db_pass'] ?? ($_SESSION['install_db']['pass'] ?? '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        $dsn = "mysql:host={$dbHost};charset=utf8mb4";
-        $pdo = new PDO($dsn, $dbUser, $dbPass, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-        ]);
-
-        // Create database if not exists
-        $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-        $pdo->exec("USE `{$dbName}`");
+        $pdo = null;
+        try {
+            // First attempt: Direct connection to target database (cPanel / shared hosting standard)
+            $dsn = "mysql:host={$dbHost};dbname={$dbName};charset=utf8mb4";
+            $pdo = new PDO($dsn, $dbUser, $dbPass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            ]);
+        } catch (PDOException $exDirect) {
+            // Second attempt: Connect without dbname and create database (localhost / root standard)
+            $dsn = "mysql:host={$dbHost};charset=utf8mb4";
+            $pdo = new PDO($dsn, $dbUser, $dbPass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            ]);
+            $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $pdo->exec("USE `{$dbName}`");
+        }
 
         // Import educore_school_schema.sql if needed
         $schemaPath = dirname(__DIR__, 2) . '/database/educore_school_schema.sql';
@@ -54,13 +63,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $migrationRunner->recordBaseline('001_initial_schema.sql');
         $migrationResult = $migrationRunner->runPending();
 
-        // Store DB parameters in session
-        $_SESSION['install_db'] = [
+        // Store DB parameters in session & persistent state
+        $dbData = [
             'host' => $dbHost,
             'name' => $dbName,
             'user' => $dbUser,
             'pass' => $dbPass
         ];
+        $_SESSION['install_db'] = $dbData;
+        if (function_exists('save_installer_state')) {
+            save_installer_state(['install_db' => $dbData]);
+        }
 
         if (!headers_sent()) {
             header('Location: index.php?step=3');
