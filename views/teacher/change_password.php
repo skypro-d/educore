@@ -14,6 +14,11 @@
             <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px;">Choose a strong password containing letters, numbers, and symbols.</div>
         </div>
 
+        <div class="mb-4">
+            <label class="form-label" for="password_confirmation">Confirm New Password</label>
+            <input class="form-control" type="password" name="password_confirmation" id="password_confirmation" minlength="6" required placeholder="Re-enter new password">
+        </div>
+
         <button type="submit" class="btn-auth" style="background:#14b8a6;color:#fff;box-shadow: 0 4px 12px rgba(20, 184, 166, 0.2);">Save &amp; Continue</button>
     </form>
 

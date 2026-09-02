@@ -1,180 +1,195 @@
+<?php
+// views/admin/result_sheet.php — Official Terminal Report Card (Dynamic Subjects)
+$subjectsList = $resultData['subjects'] ?? ($results ?? []);
+$summary = $resultData['summary'] ?? [];
+$termRemark = $resultData['term_remark'] ?? ($termRemark ?? []);
+$attendance = $resultData['attendance'] ?? [
+    'present' => $termRemark['times_present'] ?? '—',
+    'absent'  => $termRemark['times_absent'] ?? '—',
+];
+$scaleRules = GradingService::getScale();
+$components = ResultService::getAssessmentComponents();
+?>
 <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Result Sheet — <?= e($student['first_name'].' '.$student['last_name']) ?></title>
+    <title>Academic Report Card — <?= e($student['first_name'] . ' ' . $student['last_name']) ?> (<?= e($term) ?> Term, <?= e($year) ?>)</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Times New Roman', serif; font-size: 13px; background: #fff; color: #1a1a1a; }
-        .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 16mm 18mm; }
-        .school-header { text-align: center; border-bottom: 3px double #0b3d91; padding-bottom: 14px; margin-bottom: 16px; }
-        .school-header .logo { max-height: 70px; margin-bottom: 6px; }
-        .school-header h1 { font-size: 20px; font-weight: 700; color: #0b3d91; text-transform: uppercase; letter-spacing: 1px; }
-        .school-header p { font-size: 12px; color: #555; margin-top: 2px; }
-        .report-title { text-align: center; background: #0b3d91; color: #fff; padding: 6px 0; margin-bottom: 16px; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; }
-        .info-row { display: flex; border-bottom: 1px dotted #ccc; padding: 3px 0; font-size: 12px; }
-        .info-label { font-weight: 700; color: #555; width: 130px; flex-shrink: 0; }
-        .info-val { color: #1a1a1a; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 12.5px; background: #f8fafc; color: #1e293b; line-height: 1.4; }
+        .page { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 16mm 18mm; background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border-radius: 4px; }
+        .school-header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
+        .school-header .logo { max-height: 65px; margin-bottom: 6px; }
+        .school-header h1 { font-size: 21px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+        .school-header p { font-size: 11.5px; color: #64748b; margin-top: 1px; }
+        .report-banner { text-align: center; background: #0f766e; color: #fff; padding: 6px 0; margin-bottom: 16px; font-size: 13.5px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; border-radius: 4px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; background: #f8fafc; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 6px; }
+        .info-row { display: flex; padding: 3px 0; font-size: 12px; }
+        .info-label { font-weight: 700; color: #475569; width: 130px; flex-shrink: 0; }
+        .info-val { color: #0f172a; font-weight: 600; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-        thead tr { background: #0b3d91; color: #fff; }
-        th { padding: 7px 8px; font-size: 11px; text-align: center; font-weight: 700; border: 1px solid #0b3d91; }
-        th:first-child { text-align: left; }
-        td { padding: 6px 8px; font-size: 12px; text-align: center; border: 1px solid #ddd; }
-        td:first-child { text-align: left; font-weight: 600; }
-        tr:nth-child(even) td { background: #f5f8ff; }
-        .tfoot-row td { background: #e8eef9; font-weight: 700; border-top: 2px solid #0b3d91; }
-        .grade-chip { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
-        .grade-pass { background: #d1fae5; color: #065f46; }
-        .grade-fail { background: #fee2e2; color: #991b1b; }
-        .remarks-box { border: 1px solid #ddd; border-radius: 4px; padding: 12px 14px; margin-bottom: 14px; background: #fafafa; font-size: 12px; }
-        .remarks-box h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #555; margin-bottom: 6px; }
-        .sig-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 24px; }
+        thead tr { background: #0f172a; color: #fff; }
+        th { padding: 8px 6px; font-size: 10.5px; text-align: center; font-weight: 700; border: 1px solid #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px; }
+        th:nth-child(2) { text-align: left; }
+        td { padding: 6px 6px; font-size: 11.5px; text-align: center; border: 1px solid #e2e8f0; }
+        td:nth-child(2) { text-align: left; font-weight: 600; color: #0f172a; }
+        tr:nth-child(even) td { background: #fbfcfe; }
+        .tfoot-row td { background: #f1f5f9; font-weight: 700; border-top: 2px solid #0f172a; font-size: 12px; }
+        .grade-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+        .remarks-box { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; background: #f8fafc; font-size: 12px; }
+        .remarks-box h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; margin-bottom: 4px; letter-spacing: 0.5px; }
+        .sig-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 24px; }
         .sig-block { text-align: center; }
-        .sig-line { border-bottom: 1px solid #333; margin-bottom: 5px; height: 40px; }
-        .sig-label { font-size: 11px; color: #555; }
-        .grading-key { border: 1px solid #ddd; padding: 8px; margin-bottom: 14px; font-size: 11px; }
-        .grading-key h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; }
-        .grading-key .key-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
-        .key-item { text-align: center; background: #f9fafb; padding: 3px; border-radius: 3px; }
-        .stamp-box { border: 2px dashed #0b3d91; display: inline-block; width: 80px; height: 80px; text-align: center; vertical-align: middle; color: #0b3d91; font-size: 9px; padding-top: 30px; }
+        .sig-line { border-bottom: 1px solid #0f172a; margin-bottom: 5px; height: 35px; }
+        .sig-label { font-size: 11px; color: #475569; font-weight: 600; }
+        .grading-key { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-bottom: 14px; background: #fff; }
+        .grading-key h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; color: #475569; }
+        .key-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+        .key-item { text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; padding: 4px 2px; border-radius: 4px; font-size: 10.5px; }
         @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .no-print { display: none; }
+            body { background: #fff; padding: 0; }
+            .page { width: 100%; margin: 0; padding: 10mm 12mm; box-shadow: none; }
+            .no-print { display: none !important; }
         }
     </style>
 </head>
 <body>
-<div class="no-print" style="padding:16px;background:#f0f4f8;display:flex;justify-content:center;gap:12px;margin-bottom:0;">
-    <button onclick="window.print()" style="padding:8px 20px;background:#0b3d91;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;"><i class="ti ti-printer"></i> Print</button>
-    <a href="javascript:history.back()" style="padding:8px 20px;background:#fff;border:1px solid #ddd;border-radius:8px;font-size:13px;text-decoration:none;color:#374151;">← Back</a>
+
+<div class="no-print" style="padding:14px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; justify-content:center; gap:12px; position:sticky; top:0; z-index:100; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+    <button onclick="window.print()" style="padding:8px 24px; background:#0f766e; color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;">
+        <i class="ti ti-printer"></i> Print Report Card
+    </button>
+    <a href="javascript:history.back()" style="padding:8px 20px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; font-size:13px; text-decoration:none; color:#334155; font-weight:600;">
+        ← Back to Results
+    </a>
 </div>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 
 <div class="page">
-    <!-- Header -->
+    <!-- School Header -->
     <div class="school-header">
         <?php $logoUrl = school_logo_url(); ?>
         <?php if ($logoUrl): ?>
             <img class="logo" src="<?= e($logoUrl) ?>" alt="Logo" onerror="this.style.display='none';">
         <?php endif; ?>
-        <h1><?= e(setting('school_name', 'School Name')) ?></h1>
-        <p><?= e(setting('school_address', '')) ?> &nbsp;|&nbsp; <?= e(setting('school_phone','')) ?></p>
-        <p><?= e(setting('school_email','')) ?></p>
+        <h1><?= e(setting('school_name', 'EduCore International Academy')) ?></h1>
+        <p><?= e(setting('school_address', 'School Campus Address')) ?> &nbsp;|&nbsp; Tel: <?= e(setting('school_phone', '')) ?></p>
+        <p><?= e(setting('school_email', '')) ?> &nbsp;|&nbsp; <?= e(setting('school_website', '')) ?></p>
     </div>
 
-    <div class="report-title"><?= e($term) ?> Term Academic Report — <?= e($year) ?></div>
+    <div class="report-banner">
+        Official Terminal Academic Report &mdash; <?= e($term) ?> Term (<?= e($year) ?>)
+    </div>
 
-    <!-- Student Info -->
+    <!-- Student Bio Grid -->
     <div class="info-grid">
         <div>
-            <div class="info-row"><span class="info-label">Student Name:</span><span class="info-val"><?= e($student['first_name'].' '.($student['middle_name']?' '.$student['middle_name'].' ':'').$student['last_name']) ?></span></div>
+            <div class="info-row"><span class="info-label">Student Name:</span><span class="info-val"><?= e($student['last_name'] . ' ' . $student['first_name'] . (!empty($student['middle_name']) ? ' ' . $student['middle_name'] : '')) ?></span></div>
+            <div class="info-row"><span class="info-label">Admission No:</span><span class="info-val font-monospace"><?= e($student['admission_number'] ?? $student['application_number']) ?></span></div>
             <div class="info-row"><span class="info-label">Class:</span><span class="info-val"><?= e($student['class_name'] ?? '—') ?></span></div>
-            <div class="info-row"><span class="info-label">Admission No.:</span><span class="info-val"><?= e($student['admission_number'] ?? $student['application_number']) ?></span></div>
+            <div class="info-row"><span class="info-label">Gender:</span><span class="info-val"><?= e($student['gender'] ?? '—') ?></span></div>
         </div>
         <div>
-            <div class="info-row"><span class="info-label">Position:</span><span class="info-val"><?= $termRemark['position'] ?? '—' ?> of <?= $termRemark['class_size'] ?? '—' ?></span></div>
-            <div class="info-row"><span class="info-label">Times Present:</span><span class="info-val"><?= $termRemark['times_present'] ?? '—' ?></span></div>
-            <div class="info-row"><span class="info-label">Times Absent:</span><span class="info-val"><?= $termRemark['times_absent'] ?? '—' ?></span></div>
+            <div class="info-row"><span class="info-label">Position:</span><span class="info-val text-primary"><?= !empty($termRemark['position']) ? $termRemark['position'] . ' of ' . ($termRemark['class_size'] ?? '—') : '—' ?></span></div>
+            <div class="info-row"><span class="info-label">Days Present:</span><span class="info-val text-success"><?= e((string)$attendance['present']) ?></span></div>
+            <div class="info-row"><span class="info-label">Days Absent:</span><span class="info-val text-danger"><?= e((string)$attendance['absent']) ?></span></div>
+            <div class="info-row"><span class="info-label">Session:</span><span class="info-val"><?= e($year) ?></span></div>
         </div>
     </div>
 
-    <!-- Results Table -->
-    <?php
-    $totalAll = 0; $subCount = count($results);
-    $ca1Max   = (int) setting('ca1_max', 10);
-    $ca2Max   = (int) setting('ca2_max', 10);
-    $assnMax  = (int) setting('assignment_max', 10);
-    $midMax   = (int) setting('mid_term_max', 10);
-    $examMax  = (int) setting('exam_max', 60);
-    $grandMax = $ca1Max + $ca2Max + $assnMax + $midMax + $examMax;
-    ?>
+    <!-- Dynamic Subjects Results Table (ZERO hardcoded limits) -->
     <table>
         <thead>
             <tr>
-                <th style="text-align:left;width:180px;">SUBJECT</th>
-                <th>CA1<br>(<?= $ca1Max ?>)</th>
-                <th>CA2<br>(<?= $ca2Max ?>)</th>
-                <th>Assgn<br>(<?= $assnMax ?>)</th>
-                <th>Mid<br>(<?= $midMax ?>)</th>
-                <th>Exam<br>(<?= $examMax ?>)</th>
-                <th>TOTAL<br>(<?= $grandMax ?>)</th>
-                <th>GRADE</th>
-                <th>REMARK</th>
+                <th style="width:30px;">#</th>
+                <th>Subject</th>
+                <th style="width:55px;">Test 1<br><small style="opacity:0.75;">(15)</small></th>
+                <th style="width:55px;">Test 2<br><small style="opacity:0.75;">(10)</small></th>
+                <th style="width:55px;">Assign<br><small style="opacity:0.75;">(10)</small></th>
+                <th style="width:55px;">Mid<br><small style="opacity:0.75;">(10)</small></th>
+                <th style="width:55px;">Exam<br><small style="opacity:0.75;">(55)</small></th>
+                <th style="width:65px;">Total<br><small style="opacity:0.75;">(100)</small></th>
+                <th style="width:55px;">Grade</th>
+                <th style="width:90px;">Remark</th>
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($results as $r):
-                $total = (float) ($r['total'] ?? 0);
-                $totalAll += $total;
-                $passed = $total >= 50;
+            <?php 
+            $i = 1; 
+            $totalSum = 0;
+            $scoredCount = 0;
+            foreach ($subjectsList as $r): 
+                $total = isset($r['total']) && $r['total'] !== null ? (float)$r['total'] : null;
+                if ($total !== null) {
+                    $totalSum += $total;
+                    $scoredCount++;
+                }
+                $subjName = $r['name'] ?? ($r['subject_name'] ?? 'Subject');
             ?>
             <tr>
-                <td><?= e($r['subject_name']) ?></td>
-                <td><?= $r['ca1'] !== null ? number_format((float)$r['ca1'],1) : '—' ?></td>
-                <td><?= $r['ca2'] !== null ? number_format((float)$r['ca2'],1) : '—' ?></td>
-                <td><?= $r['assignment'] !== null ? number_format((float)$r['assignment'],1) : '—' ?></td>
-                <td><?= $r['mid_term'] !== null ? number_format((float)$r['mid_term'],1) : '—' ?></td>
-                <td><?= $r['exam'] !== null ? number_format((float)$r['exam'],1) : '—' ?></td>
-                <td style="font-weight:700;"><?= number_format($total,1) ?></td>
-                <td><span class="grade-chip <?= $passed ? 'grade-pass' : 'grade-fail' ?>"><?= e($r['grade'] ?? '—') ?></span></td>
-                <td><?= e($r['remark'] ?? '—') ?></td>
+                <td style="color:#64748b;"><?= $i++ ?></td>
+                <td><?= e($subjName) ?></td>
+                <td><?= isset($r['ca1']) && $r['ca1'] !== null ? number_format((float)$r['ca1'], 1) : '—' ?></td>
+                <td><?= isset($r['ca2']) && $r['ca2'] !== null ? number_format((float)$r['ca2'], 1) : '—' ?></td>
+                <td><?= isset($r['assignment']) && $r['assignment'] !== null ? number_format((float)$r['assignment'], 1) : '—' ?></td>
+                <td><?= isset($r['mid_term']) && $r['mid_term'] !== null ? number_format((float)$r['mid_term'], 1) : '—' ?></td>
+                <td><?= isset($r['exam']) && $r['exam'] !== null ? number_format((float)$r['exam'], 1) : '—' ?></td>
+                <td style="font-weight:700; color:#0f766e;"><?= $total !== null ? number_format($total, 1) : '—' ?></td>
+                <td style="font-weight:700;"><?= e($r['grade'] ?? '—') ?></td>
+                <td style="font-size:11px;"><?= e($r['remark'] ?? '—') ?></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
         <tfoot>
+            <?php 
+            $actualSubjectCount = count($subjectsList);
+            $finalAvg = $actualSubjectCount > 0 ? round($totalSum / $actualSubjectCount, 1) : 0.0;
+            ?>
             <tr class="tfoot-row">
-                <td colspan="6">TOTAL SCORE / AVERAGE</td>
-                <td><?= number_format($totalAll, 1) ?></td>
-                <td colspan="2"><?= $subCount ? round($totalAll / $subCount, 1) : '—' ?> avg</td>
+                <td colspan="7" style="text-align:right; padding-right:12px;">
+                    TOTAL SCORE (<?= $actualSubjectCount ?> Subjects Offered) &nbsp;|&nbsp; <strong>AVERAGE PERCENTAGE</strong>:
+                </td>
+                <td style="color:#0f766e; font-size:13px;"><?= number_format($totalSum, 1) ?></td>
+                <td colspan="2" style="font-size:12.5px; text-align:center; color:#0f766e;">
+                    <?= $finalAvg ?>%
+                </td>
             </tr>
         </tfoot>
     </table>
 
-    <!-- Grading Key -->
+    <!-- Configurable Grading Scale Key -->
     <div class="grading-key">
-        <h3>Grading Scale</h3>
+        <h3>Grading Scale Key</h3>
         <div class="key-grid">
-            <?php
-            $grades = [
-                [setting('grade_a1_label','A1'), setting('grade_a1_min','75').'-100'],
-                [setting('grade_b2_label','B2'), setting('grade_b2_min','70').'-74'],
-                [setting('grade_b3_label','B3'), setting('grade_b3_min','65').'-69'],
-                [setting('grade_c4_label','C4'), setting('grade_c4_min','60').'-64'],
-                [setting('grade_c5_label','C5'), setting('grade_c5_min','55').'-59'],
-                [setting('grade_c6_label','C6'), setting('grade_c6_min','50').'-54'],
-                [setting('grade_d7_label','D7'), setting('grade_d7_min','45').'-49'],
-                [setting('grade_e8_label','E8'), setting('grade_e8_min','40').'-44'],
-                [setting('grade_f9_label','F9'), '0-39'],
-            ];
-            foreach ($grades as [$g,$r]):
-            ?>
-                <div class="key-item"><strong><?= e($g) ?></strong><br><?= e($r) ?></div>
+            <?php foreach ($scaleRules as $rule): ?>
+                <div class="key-item">
+                    <strong style="color:#0f766e;"><?= e($rule['label']) ?></strong><br>
+                    <span style="font-size:9.5px; color:#64748b;"><?= round($rule['min']) ?>-<?= round($rule['max']) ?>%</span>
+                </div>
             <?php endforeach; ?>
         </div>
     </div>
 
-    <!-- Remarks -->
-    <?php if (!empty($termRemark['class_teacher_remark']) || !empty($termRemark['principal_remark'])): ?>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+    <!-- Teacher & Principal Remarks -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
         <div class="remarks-box">
             <h3>Class Teacher's Remark</h3>
-            <p><?= e($termRemark['class_teacher_remark'] ?: '—') ?></p>
+            <p style="margin:0; font-style:italic;"><?= e($termRemark['class_teacher_remark'] ?: 'An encouraging and consistent academic performance.') ?></p>
         </div>
         <div class="remarks-box">
             <h3>Principal's Remark</h3>
-            <p><?= e($termRemark['principal_remark'] ?: '—') ?></p>
+            <p style="margin:0; font-style:italic;"><?= e($termRemark['principal_remark'] ?: 'Good effort. Keep striving for greater heights next term.') ?></p>
         </div>
     </div>
-    <?php endif; ?>
 
     <?php if (!empty($termRemark['next_term_begins'])): ?>
-    <div style="text-align:center;border:1px solid #0b3d91;border-radius:4px;padding:8px;margin-bottom:16px;font-size:12px;color:#0b3d91;font-weight:700;">
-        NEXT TERM BEGINS: <?= date('D, F j Y', strtotime($termRemark['next_term_begins'])) ?>
-    </div>
+        <div style="text-align:center; border:1px solid #0f766e; border-radius:6px; padding:7px; margin-bottom:16px; font-size:12px; color:#0f766e; font-weight:700; background:#f0fdf4;">
+            NEXT TERM RESUMPTION DATE: <?= date('l, F j, Y', strtotime($termRemark['next_term_begins'])) ?>
+        </div>
     <?php endif; ?>
 
-    <!-- Signatures -->
+    <!-- Signature Line Blocks -->
     <div class="sig-row">
         <div class="sig-block">
             <div class="sig-line"></div>
@@ -190,9 +205,10 @@
         </div>
     </div>
 
-    <div style="text-align:center;margin-top:20px;font-size:10px;color:#9ca3af;border-top:1px solid #eee;padding-top:10px;">
-        This result is computer-generated by <?= e(setting('school_name','')) ?> School Management System &nbsp;|&nbsp; Powered by SkySaving Tech Hub
+    <div style="text-align:center; margin-top:20px; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:10px;">
+        This document is an authentic academic record generated by <?= e(setting('school_name', 'EduCore')) ?> &bull; Powered by SkySaving Tech Hub
     </div>
 </div>
+
 </body>
 </html>

@@ -47,6 +47,36 @@ if (preg_match('#^staff/(\d+)/delete$#', $route, $m)) {
     $controller->deleteStaff((int) $m[1]);
     exit;
 }
+if (preg_match('#^staff/(\d+)/toggle-status$#', $route, $m)) {
+    require_post();
+    $controller->toggleStaffStatus((int) $m[1]);
+    exit;
+}
+if (preg_match('#^staff/(\d+)/reset-password$#', $route, $m)) {
+    require_post();
+    $controller->resetStaffPassword((int) $m[1]);
+    exit;
+}
+if (preg_match('#^staff/(\d+)/assignments$#', $route, $m)) {
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? $controller->saveStaffAssignments((int) $m[1])
+        : $controller->staffAssignments((int) $m[1]);
+    exit;
+}
+if (preg_match('#^staff/(\d+)/permissions$#', $route, $m)) {
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? $controller->saveStaffPermissions((int) $m[1])
+        : $controller->staffPermissions((int) $m[1]);
+    exit;
+}
+if (preg_match('#^staff/(\d+)/activity$#', $route, $m)) {
+    $controller->staffActivity((int) $m[1]);
+    exit;
+}
+if (preg_match('#^staff/(\d+)/students$#', $route, $m)) {
+    $controller->staffStudents((int) $m[1]);
+    exit;
+}
 if (preg_match('#^subjects/(\d+)/delete$#', $route, $m)) {
     require_post();
     $academic->deleteSubject((int) $m[1]);
@@ -222,6 +252,19 @@ switch ($route) {
     // Academic / Results
     case 'subjects':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $academic->saveSubject() : $academic->subjects();
+        break;
+    case 'class-subjects':
+        $academic->classSubjects();
+        break;
+    case 'class-subjects/save':
+        require_post();
+        $academic->saveClassSubjects();
+        break;
+    case 'assessment-components':
+        $_SERVER['REQUEST_METHOD'] === 'POST' ? $academic->saveAssessmentComponents() : $academic->assessmentComponents();
+        break;
+    case 'grading-rules':
+        $_SERVER['REQUEST_METHOD'] === 'POST' ? $academic->saveGradingRules() : $academic->gradingRules();
         break;
     case 'results':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $academic->enterResults() : $academic->results();

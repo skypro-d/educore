@@ -45,6 +45,22 @@ class TenantPDO extends PDO
     }
 
     /**
+     * List of database tables that contain a school_id column and require multi-tenant isolation.
+     *
+     * @var string[]
+     */
+    public static array $tenantTables = [
+        'activity_logs', 'admins', 'admission_letters', 'admissions', 'announcements', 
+        'applicants', 'assessment_components', 'assignments', 'assignment_submissions', 'attendance', 'audit_logs', 'classes', 'class_subjects', 'documents', 'email_logs', 
+        'exam_questions', 'exam_results', 'exam_subjects', 'fee_structures', 'grading_rules', 'interviews', 
+        'inventory_items', 'inventory_transactions', 'library_books', 'library_borrowings', 
+        'notifications', 'parent_accounts', 'parents', 'payments', 'promotion_history', 
+        'school_gates', 'sms_logs', 'staff', 'staff_accounts', 'staff_attendance', 'staff_audit_logs', 'staff_class_assignments', 'staff_permissions',
+        'student_accounts', 'student_authorized_pickups', 'student_exit_logs', 'student_fee_payments', 'student_results', 'student_subject_enrollments', 'student_transport', 
+        'subjects', 'term_remarks', 'timetables', 'transport_buses', 'transport_routes'
+    ];
+
+    /**
      * Rewrites SQL to automatically append school_id = context_school_id for multi-tenant isolation.
      */
     private function rewriteSql(string $sql): string
@@ -78,17 +94,7 @@ class TenantPDO extends PDO
             }
         }
 
-        // List of database tables that contain a school_id column
-        $tenantTables = [
-            'activity_logs', 'admins', 'admission_letters', 'admissions', 'announcements', 
-            'applicants', 'attendance', 'audit_logs', 'classes', 'documents', 'email_logs', 
-            'exam_questions', 'exam_results', 'exam_subjects', 'fee_structures', 'interviews', 
-            'inventory_items', 'inventory_transactions', 'library_books', 'library_borrowings', 
-            'notifications', 'parent_accounts', 'parents', 'payments', 'promotion_history', 
-            'school_gates', 'sms_logs', 'staff', 'staff_accounts', 'staff_attendance', 'staff_class_assignments', 
-            'student_accounts', 'student_authorized_pickups', 'student_exit_logs', 'student_fee_payments', 'student_results', 'student_transport', 
-            'subjects', 'term_remarks', 'timetables', 'transport_buses', 'transport_routes'
-        ];
+        $tenantTables = self::$tenantTables;
 
         // If the query already explicitly mentions school_id, do not modify it
         if (stripos($sql, 'school_id') !== false) {

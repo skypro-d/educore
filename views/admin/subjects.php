@@ -1,5 +1,16 @@
-<div class="sa-top-bar">
-    <div><h1>Subject Management</h1><p>Configure subjects per class for result tracking</p></div>
+<div class="sa-top-bar mb-4">
+    <div><h1>Subject Management</h1><p>Configure master school subjects and class curriculum allocations</p></div>
+    <div class="d-flex gap-2">
+        <a class="sa-btn sa-btn-primary" href="<?= url('admin/class-subjects') ?>" style="border-radius:8px;">
+            <i class="ti ti-checklist"></i> Class Subjects Allocation
+        </a>
+        <a class="sa-btn" href="<?= url('admin/assessment-components') ?>" style="border-radius:8px;">
+            <i class="ti ti-adjustments"></i> Assessment Components
+        </a>
+        <a class="sa-btn" href="<?= url('admin/grading-rules') ?>" style="border-radius:8px;">
+            <i class="ti ti-certificate"></i> Grading Scale
+        </a>
+    </div>
 </div>
 
 <div style="display:grid;grid-template-columns:400px 1fr;gap:20px;align-items:start;">

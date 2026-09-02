@@ -1181,8 +1181,29 @@ final class AdminController
     public function staff(): void
     {
         require_permission('staff');
-        $staff = $this->db->query("SELECT * FROM staff ORDER BY first_name, last_name")->fetchAll();
-        render('admin/staff', compact('staff'), 'admin');
+        
+        $academicYear = current_academic_year();
+        
+        // Fetch all staff members with their role title, login username, and assigned counts
+        $sql = "SELECT s.*, r.name AS role_title, r.description AS role_desc,
+                       sa.id AS account_id, sa.username, sa.last_login, sa.must_change_password,
+                       (SELECT COUNT(DISTINCT sca.class_id) FROM staff_class_assignments sca WHERE sca.staff_id = s.id AND sca.academic_year = :year1) AS class_count,
+                       (SELECT COUNT(DISTINCT sca.subject_id) FROM staff_class_assignments sca WHERE sca.staff_id = s.id AND sca.subject_id IS NOT NULL AND sca.academic_year = :year2) AS subject_count
+                FROM staff s
+                LEFT JOIN roles r ON r.id = s.role_id
+                LEFT JOIN staff_accounts sa ON sa.staff_id = s.id
+                ORDER BY s.first_name ASC, s.last_name ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['year1' => $academicYear, 'year2' => $academicYear]);
+        $staff = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch all roles, classes, and subjects for the assignment modals
+        $roles = $this->db->query("SELECT * FROM roles ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $classes = (new ClassModel($this->db))->all();
+        $subjects = $this->db->query("SELECT * FROM subjects WHERE is_active = 1 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $allPermissions = $this->db->query("SELECT * FROM permissions ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+        render('admin/staff', compact('staff', 'roles', 'classes', 'subjects', 'allPermissions', 'academicYear'), 'admin');
     }
 
     public function saveStaff(): void
@@ -1190,40 +1211,62 @@ final class AdminController
         require_permission('staff');
         verify_csrf();
 
-        $id = (int) ($_POST['id'] ?? 0);
-        $firstName = trim($_POST['first_name'] ?? '');
-        $lastName = trim($_POST['last_name'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $phone = trim($_POST['phone'] ?? '');
-        $role = $_POST['role'] ?? 'Teacher';
-        $status = $_POST['status'] ?? 'Active';
+        $id            = (int) ($_POST['id'] ?? 0);
+        $firstName     = trim($_POST['first_name'] ?? '');
+        $lastName      = trim($_POST['last_name'] ?? '');
+        $email         = trim($_POST['email'] ?? '');
+        $phone         = trim($_POST['phone'] ?? '');
+        $roleId        = !empty($_POST['role_id']) ? (int) $_POST['role_id'] : null;
+        $roleStr       = trim($_POST['role'] ?? 'Teacher');
+        $department    = trim($_POST['department'] ?? '');
+        $status        = $_POST['status'] ?? 'Active';
         $qualification = trim($_POST['qualification'] ?? '');
-        $salary = $_POST['salary'] !== '' ? (float) $_POST['salary'] : null;
+        $salary        = $_POST['salary'] !== '' ? (float) $_POST['salary'] : null;
 
         if ($firstName === '' || $lastName === '' || $phone === '') {
-            flash('danger', 'First Name, Last Name and Phone are required.');
+            flash('danger', 'First Name, Last Name, and Phone number are required.');
             redirect('admin/staff');
         }
 
+        // If role_id is provided, sync role string name
+        if ($roleId) {
+            $stmtRole = $this->db->prepare("SELECT name FROM roles WHERE id = ? LIMIT 1");
+            $stmtRole->execute([$roleId]);
+            $foundRole = $stmtRole->fetchColumn();
+            if ($foundRole) {
+                $roleStr = ucwords(str_replace('_', ' ', $foundRole));
+            }
+        } else {
+            // Find role_id by name if possible
+            $norm = strtolower(str_replace(' ', '_', $roleStr));
+            $stmtR = $this->db->prepare("SELECT id FROM roles WHERE LOWER(REPLACE(name, ' ', '_')) = ? LIMIT 1");
+            $stmtR->execute([$norm]);
+            $roleId = $stmtR->fetchColumn() ?: null;
+        }
+
         if ($id > 0) {
+            $prev = $this->db->prepare("SELECT * FROM staff WHERE id = ?");
+            $prev->execute([$id]);
+            $prevStaff = $prev->fetch(PDO::FETCH_ASSOC);
+
             $stmt = $this->db->prepare(
-                "UPDATE staff SET first_name=?, last_name=?, email=?, phone=?, role=?, status=?, qualification=?, salary=?, updated_at=NOW() WHERE id=?"
+                "UPDATE staff SET first_name=?, last_name=?, email=?, phone=?, role=?, role_id=?, department=?, status=?, qualification=?, salary=?, updated_at=NOW() WHERE id=?"
             );
-            $stmt->execute([$firstName, $lastName, $email ?: null, $phone, $role, $status, $qualification, $salary, $id]);
-            flash('success', 'Staff profile updated.');
+            $stmt->execute([$firstName, $lastName, $email ?: null, $phone, $roleStr, $roleId, $department ?: null, $status, $qualification, $salary, $id]);
+
+            StaffAudit::log('staff.updated', 'staff', $id, "Updated staff profile for {$firstName} {$lastName}", json_encode($prevStaff), json_encode($_POST));
+            flash('success', 'Staff profile updated successfully.');
         } else {
             $staffId = generate_staff_id($this->db);
             $stmt = $this->db->prepare(
-                "INSERT INTO staff (staff_id, first_name, last_name, email, phone, role, status, qualification, salary)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO staff (staff_id, first_name, last_name, email, phone, role, role_id, department, status, qualification, salary)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->execute([$staffId, $firstName, $lastName, $email ?: null, $phone, $role, $status, $qualification, $salary]);
+            $stmt->execute([$staffId, $firstName, $lastName, $email ?: null, $phone, $roleStr, $roleId, $department ?: null, $status, $qualification, $salary]);
 
-            // Auto-create Teacher Portal login account
             $newStaffRowId = (int) $this->db->lastInsertId();
             if ($newStaffRowId > 0) {
-                // Build a clean username from staff_id, e.g. STF20260001
-                $username = str_replace('-', '', $staffId); // STF-2026-0001 => STF20260001
+                $username = str_replace('-', '', $staffId);
                 $tempPass = generate_temp_password();
                 $hashPass = password_hash($tempPass, PASSWORD_BCRYPT);
 
@@ -1234,26 +1277,24 @@ final class AdminController
                 );
                 $stmtAcc->execute([$newStaffRowId, $username, $hashPass]);
 
-                // Send credentials email if email is provided
                 if ($email) {
-                    $emailSubject = 'Your Teacher Portal Login Credentials';
-                    $emailBody = "Dear $firstName $lastName,\n\n"
+                    $emailSubject = 'Your Staff Portal Login Credentials';
+                    $emailBody = "Dear {$firstName} {$lastName},\n\n"
                         . "Your staff account has been created on " . setting('school_name', APP_NAME) . ".\n\n"
-                        . "Teacher Portal URL: " . url('teacher/login') . "\n"
-                        . "Username: $username\n"
-                        . "Temporary Password: $tempPass\n\n"
+                        . "Staff Portal URL: " . url('teacher/login') . "\n"
+                        . "Username: {$username}\n"
+                        . "Temporary Password: {$tempPass}\n\n"
                         . "Please log in and change your password immediately.\n\n"
                         . "Regards,\n" . setting('school_name', 'School Administration');
                     send_email_notice($email, $emailSubject, $emailBody);
                 }
 
-                // Send SMS with credentials
                 if ($phone) {
-                    send_sms_notice($phone, "Your teacher portal account has been created. Username: $username, Temp Password: $tempPass. Login: " . url('teacher/login'));
+                    send_sms_notice($phone, "Staff portal account created. Username: {$username}, Temp Password: {$tempPass}. Login: " . url('teacher/login'));
                 }
 
-                (new ActivityLog($this->db))->record('staff_account_created', "Teacher account created for $firstName $lastName ($username)");
-                flash('success', "New staff member registered. Portal credentials: Username: $username, Password: $tempPass");
+                StaffAudit::log('staff.created', 'staff', $newStaffRowId, "Created staff account for {$firstName} {$lastName} ({$username})");
+                flash('success', "New staff member registered. Credentials — Username: <strong>{$username}</strong>, Temp Password: <strong>{$tempPass}</strong>");
             } else {
                 flash('success', 'New staff member registered.');
             }
@@ -1262,12 +1303,307 @@ final class AdminController
         redirect('admin/staff');
     }
 
+    public function toggleStaffStatus(int $id): void
+    {
+        require_permission('staff');
+        verify_csrf();
+
+        $stmt = $this->db->prepare("SELECT status, first_name, last_name FROM staff WHERE id = ?");
+        $stmt->execute([$id]);
+        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$staff) {
+            flash('danger', 'Staff member not found.');
+            redirect('admin/staff');
+        }
+
+        $newStatus = ($staff['status'] === 'Active') ? 'On Leave' : 'Active';
+        $this->db->prepare("UPDATE staff SET status = ?, updated_at = NOW() WHERE id = ?")->execute([$newStatus, $id]);
+
+        StaffAudit::log('staff.status_changed', 'staff', $id, "Changed status of {$staff['first_name']} {$staff['last_name']} to {$newStatus}", $staff['status'], $newStatus);
+
+        flash('success', "Staff status updated to {$newStatus}.");
+        redirect('admin/staff');
+    }
+
+    public function resetStaffPassword(int $id): void
+    {
+        require_permission('staff');
+        verify_csrf();
+
+        $stmt = $this->db->prepare("SELECT s.*, sa.id AS account_id, sa.username FROM staff s LEFT JOIN staff_accounts sa ON sa.staff_id = s.id WHERE s.id = ?");
+        $stmt->execute([$id]);
+        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$staff) {
+            flash('danger', 'Staff record not found.');
+            redirect('admin/staff');
+        }
+
+        $tempPass = generate_temp_password();
+        $hash = password_hash($tempPass, PASSWORD_BCRYPT);
+        $username = $staff['username'] ?: str_replace('-', '', $staff['staff_id']);
+
+        if (!empty($staff['account_id'])) {
+            $this->db->prepare(
+                "UPDATE staff_accounts SET password_hash = ?, must_change_password = 1 WHERE id = ?"
+            )->execute([$hash, $staff['account_id']]);
+        } else {
+            $this->db->prepare(
+                "INSERT INTO staff_accounts (staff_id, username, password_hash, must_change_password) VALUES (?, ?, ?, 1)"
+            )->execute([$id, $username, $hash]);
+        }
+
+        if (!empty($staff['email'])) {
+            $subject = 'Staff Account Password Reset';
+            $body = "Dear {$staff['first_name']} {$staff['last_name']},\n\n"
+                . "Your Staff Portal password has been reset by the school administrator.\n\n"
+                . "Portal URL: " . url('teacher/login') . "\n"
+                . "Username: {$username}\n"
+                . "New Temporary Password: {$tempPass}\n\n"
+                . "You will be required to choose a new password upon logging in.\n\n"
+                . "Regards,\n" . setting('school_name', 'School Administration');
+            send_email_notice($staff['email'], $subject, $body);
+        }
+
+        if (!empty($staff['phone'])) {
+            send_sms_notice($staff['phone'], "Your staff portal password has been reset. Username: {$username}, Temp Password: {$tempPass}. Login: " . url('teacher/login'));
+        }
+
+        StaffAudit::log('staff.password_reset', 'staff', $id, "Admin reset password for {$staff['first_name']} {$staff['last_name']} ({$username})");
+
+        flash('success', "Password reset for {$staff['first_name']}. New temporary password: <strong>{$tempPass}</strong>");
+        redirect('admin/staff');
+    }
+
+    public function staffAssignments(int $id): void
+    {
+        require_permission('staff');
+        $academicYear = current_academic_year();
+
+        $stmtStaff = $this->db->prepare("SELECT * FROM staff WHERE id = ?");
+        $stmtStaff->execute([$id]);
+        $staffMember = $stmtStaff->fetch(PDO::FETCH_ASSOC);
+
+        if (!$staffMember) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Staff not found']);
+            exit;
+        }
+
+        $stmtAssignments = $this->db->prepare(
+            "SELECT sca.*, c.name AS class_name, s.name AS subject_name, s.code AS subject_code
+             FROM staff_class_assignments sca
+             JOIN classes c ON c.id = sca.class_id
+             LEFT JOIN subjects s ON s.id = sca.subject_id
+             WHERE sca.staff_id = ? AND sca.academic_year = ?
+             ORDER BY c.sort_order ASC, s.name ASC"
+        );
+        $stmtAssignments->execute([$id, $academicYear]);
+        $assignments = $stmtAssignments->fetchAll(PDO::FETCH_ASSOC);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'staff' => $staffMember,
+            'academic_year' => $academicYear,
+            'assignments' => $assignments,
+        ]);
+        exit;
+    }
+
+    public function saveStaffAssignments(int $id): void
+    {
+        require_permission('staff');
+        verify_csrf();
+
+        $academicYear = $_POST['academic_year'] ?? current_academic_year();
+        $classId      = (int) ($_POST['class_id'] ?? 0);
+        $subjectId    = !empty($_POST['subject_id']) ? (int) $_POST['subject_id'] : null;
+        $isFormTeacher = !empty($_POST['is_form_teacher']) ? 1 : 0;
+        $action       = $_POST['assignment_action'] ?? 'add'; // 'add' or 'remove'
+        $assignmentId = (int) ($_POST['assignment_id'] ?? 0);
+
+        if ($action === 'remove' && $assignmentId > 0) {
+            $stmtPrev = $this->db->prepare("SELECT * FROM staff_class_assignments WHERE id = ? AND staff_id = ?");
+            $stmtPrev->execute([$assignmentId, $id]);
+            $prev = $stmtPrev->fetch(PDO::FETCH_ASSOC);
+
+            $this->db->prepare("DELETE FROM staff_class_assignments WHERE id = ? AND staff_id = ?")->execute([$assignmentId, $id]);
+            StaffAudit::log('staff.assignment_removed', 'staff_class_assignments', $assignmentId, "Removed assignment from staff #{$id}", json_encode($prev));
+
+            if (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Assignment removed successfully.']);
+                exit;
+            }
+            flash('success', 'Assignment removed successfully.');
+            redirect('admin/staff');
+        }
+
+        if ($classId <= 0) {
+            flash('danger', 'Please select a valid class.');
+            redirect('admin/staff');
+        }
+
+        // Check for existing duplicate
+        if ($subjectId !== null) {
+            $chk = $this->db->prepare(
+                "SELECT id FROM staff_class_assignments WHERE staff_id = ? AND class_id = ? AND subject_id = ? AND academic_year = ? LIMIT 1"
+            );
+            $chk->execute([$id, $classId, $subjectId, $academicYear]);
+            if ($chk->fetch()) {
+                flash('warning', 'This subject assignment already exists for this teacher in the selected class.');
+                redirect('admin/staff');
+            }
+        }
+
+        $stmtIns = $this->db->prepare(
+            "INSERT INTO staff_class_assignments (staff_id, class_id, subject_id, academic_year, is_form_teacher)
+             VALUES (?, ?, ?, ?, ?)"
+        );
+        $stmtIns->execute([$id, $classId, $subjectId, $academicYear, $isFormTeacher]);
+
+        StaffAudit::log('staff.assignment_added', 'staff_class_assignments', (int) $this->db->lastInsertId(), "Assigned staff #{$id} to class #{$classId}" . ($subjectId ? " subject #{$subjectId}" : "") . ($isFormTeacher ? " as Form Teacher" : ""));
+
+        if (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Assignment added successfully.']);
+            exit;
+        }
+
+        flash('success', 'Staff class/subject assignment saved.');
+        redirect('admin/staff');
+    }
+
+    public function staffPermissions(int $id): void
+    {
+        require_permission('staff');
+
+        $stmtStaff = $this->db->prepare("SELECT s.*, r.name AS role_name FROM staff s LEFT JOIN roles r ON r.id = s.role_id WHERE s.id = ?");
+        $stmtStaff->execute([$id]);
+        $staffMember = $stmtStaff->fetch(PDO::FETCH_ASSOC);
+
+        if (!$staffMember) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Staff not found']);
+            exit;
+        }
+
+        $allPerms = $this->db->query("SELECT * FROM permissions ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Load default role permissions
+        $roleName = strtolower(str_replace(' ', '_', $staffMember['role_name'] ?? $staffMember['role']));
+        $stmtRolePerms = $this->db->prepare(
+            "SELECT p.id, p.name FROM role_permissions rp
+             JOIN roles r ON r.id = rp.role_id
+             JOIN permissions p ON p.id = rp.permission_id
+             WHERE LOWER(REPLACE(r.name, ' ', '_')) = ?"
+        );
+        $stmtRolePerms->execute([$roleName]);
+        $rolePerms = $stmtRolePerms->fetchAll(PDO::FETCH_KEY_PAIR); // id => name
+
+        // Load custom staff overrides
+        $stmtOverrides = $this->db->prepare("SELECT permission_id, granted FROM staff_permissions WHERE staff_id = ?");
+        $stmtOverrides->execute([$id]);
+        $overrides = $stmtOverrides->fetchAll(PDO::FETCH_KEY_PAIR); // permission_id => granted (1 or 0)
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'staff' => $staffMember,
+            'all_permissions' => $allPerms,
+            'role_permissions' => array_keys($rolePerms),
+            'staff_overrides' => $overrides,
+        ]);
+        exit;
+    }
+
+    public function saveStaffPermissions(int $id): void
+    {
+        require_permission('staff');
+        verify_csrf();
+
+        // Selected permissions array from form: [permission_id => '1' or '0']
+        $submittedOverrides = $_POST['permissions'] ?? [];
+
+        // Clear existing overrides for this staff member
+        $this->db->prepare("DELETE FROM staff_permissions WHERE staff_id = ?")->execute([$id]);
+
+        $stmtIns = $this->db->prepare(
+            "INSERT INTO staff_permissions (staff_id, permission_id, granted) VALUES (?, ?, ?)"
+        );
+
+        foreach ($submittedOverrides as $permId => $val) {
+            $pId = (int) $permId;
+            $granted = (int) $val;
+            if ($pId > 0) {
+                $stmtIns->execute([$id, $pId, $granted]);
+            }
+        }
+
+        StaffAudit::log('staff.permissions_updated', 'staff_permissions', $id, "Updated custom permission overrides for staff #{$id}");
+
+        flash('success', 'Staff custom permissions saved successfully.');
+        redirect('admin/staff');
+    }
+
+    public function staffActivity(int $id): void
+    {
+        require_permission('staff');
+
+        $logs = StaffAudit::getRecent($id, 100);
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'logs' => $logs]);
+        exit;
+    }
+
+    public function staffStudents(int $id): void
+    {
+        require_permission('staff');
+        $academicYear = current_academic_year();
+
+        // Get class IDs for this staff member
+        $stmtClasses = $this->db->prepare(
+            "SELECT DISTINCT class_id FROM staff_class_assignments WHERE staff_id = ? AND academic_year = ?"
+        );
+        $stmtClasses->execute([$id, $academicYear]);
+        $classIds = $stmtClasses->fetchAll(PDO::FETCH_COLUMN);
+
+        $students = [];
+        if (!empty($classIds)) {
+            $inClause = implode(',', array_map('intval', $classIds));
+            $sql = "SELECT a.id, a.first_name, a.last_name, a.admission_number, a.gender, a.passport_photo, c.name AS class_name
+                    FROM applicants a
+                    JOIN classes c ON c.id = a.class_id
+                    WHERE a.class_id IN ({$inClause}) AND a.status = 'Enrolled' AND a.student_status = 'Active'
+                    ORDER BY c.sort_order ASC, a.last_name ASC";
+            $students = $this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'students' => $students]);
+        exit;
+    }
+
     public function deleteStaff(int $id): void
     {
         require_permission('staff');
         verify_csrf();
-        $this->db->prepare("DELETE FROM staff WHERE id=?")->execute([$id]);
-        flash('success', 'Staff profile deleted.');
+
+        $prev = $this->db->prepare("SELECT first_name, last_name FROM staff WHERE id = ?");
+        $prev->execute([$id]);
+        $staff = $prev->fetch(PDO::FETCH_ASSOC);
+
+        $this->db->prepare("DELETE FROM staff_class_assignments WHERE staff_id = ?")->execute([$id]);
+        $this->db->prepare("DELETE FROM staff_permissions WHERE staff_id = ?")->execute([$id]);
+        $this->db->prepare("DELETE FROM staff_accounts WHERE staff_id = ?")->execute([$id]);
+        $this->db->prepare("DELETE FROM staff WHERE id = ?")->execute([$id]);
+
+        StaffAudit::log('staff.deleted', 'staff', $id, "Deleted staff profile for " . ($staff['first_name'] ?? '') . " " . ($staff['last_name'] ?? ''));
+
+        flash('success', 'Staff profile and associated assignments deleted.');
         redirect('admin/staff');
     }
 

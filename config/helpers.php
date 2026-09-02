@@ -87,12 +87,16 @@ function require_admin(): void
     }
 }
 
-function render(string $view, array $data = [], string $layout = 'public'): void
+function render(string $view, array $data = [], ?string $layout = 'public'): void
 {
     extract($data);
     ob_start();
     require __DIR__ . '/../views/' . $view . '.php';
     $content = ob_get_clean();
+    if ($layout === null || $layout === '' || $layout === 'none') {
+        echo $content;
+        return;
+    }
     require __DIR__ . '/../views/layouts/' . $layout . '.php';
 }
 
@@ -655,5 +659,60 @@ function generate_installation_id(): string
 function generate_download_token(): string
 {
     return bin2hex(random_bytes(32));
+}
+
+require_once __DIR__ . '/GradingService.php';
+require_once __DIR__ . '/ResultService.php';
+require_once __DIR__ . '/StaffAudit.php';
+require_once __DIR__ . '/StaffAuth.php';
+
+function staff_user(): ?array
+{
+    return StaffAuth::user();
+}
+
+function staff_can(string $permission): bool
+{
+    return StaffAuth::can($permission);
+}
+
+function staff_can_class(int $classId): bool
+{
+    return StaffAuth::canAccessClass($classId);
+}
+
+function staff_can_subject(int $classId, int $subjectId): bool
+{
+    return StaffAuth::canAccessSubject($classId, $subjectId);
+}
+
+function staff_can_student(int $studentId): bool
+{
+    return StaffAuth::canAccessStudent($studentId);
+}
+
+function require_staff(bool $checkPasswordForce = true): void
+{
+    StaffAuth::requireAuth($checkPasswordForce);
+}
+
+function require_staff_permission(string $permission): void
+{
+    StaffAuth::requirePermission($permission);
+}
+
+function require_staff_class(int $classId): void
+{
+    StaffAuth::requireClass($classId);
+}
+
+function require_staff_subject(int $classId, int $subjectId): void
+{
+    StaffAuth::requireSubject($classId, $subjectId);
+}
+
+function require_staff_student(int $studentId): array
+{
+    return StaffAuth::requireStudent($studentId);
 }
 
