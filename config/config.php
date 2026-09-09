@@ -111,6 +111,9 @@ define('CRON_SECRET', getEnvConfig('CRON_SECRET', ''));
 
 define('PAYSTACK_PUBLIC_KEY', getenv('PAYSTACK_PUBLIC_KEY') ?: '');
 define('PAYSTACK_SECRET_KEY', getenv('PAYSTACK_SECRET_KEY') ?: '');
+define('MONNIFY_API_KEY', getenv('MONNIFY_API_KEY') ?: '');
+define('MONNIFY_SECRET_KEY', getenv('MONNIFY_SECRET_KEY') ?: '');
+define('MONNIFY_CONTRACT_CODE', getenv('MONNIFY_CONTRACT_CODE') ?: '');
 define('PAYMENT_ENVIRONMENT', getenv('PAYMENT_ENVIRONMENT') ?: 'test');
 
 define('SMTP_HOST', getenv('SMTP_HOST') ?: '');

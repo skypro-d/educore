@@ -624,6 +624,29 @@ function platform_settings_map(): array
     return PlatformSettings::all();
 }
 
+function platform_gateway_setting(string $key, string $default = ''): string
+{
+    // 1. Check school / tenant setting first (school_settings or app_configs)
+    $val = setting($key, '');
+    if ($val !== '') {
+        return $val;
+    }
+
+    // 2. Check system / platform level setting (system_settings)
+    $sysVal = system_setting($key, '');
+    if ($sysVal !== '') {
+        return $sysVal;
+    }
+
+    // 3. Check environment variable
+    $envVal = getenv($key) ?: getenv(strtoupper($key));
+    if ($envVal !== false && $envVal !== '') {
+        return (string) $envVal;
+    }
+
+    return $default;
+}
+
 function customer(): ?array
 {
     return $_SESSION['customer'] ?? null;

@@ -1,6 +1,31 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/helpers.php';
+
+if (!function_exists('platform_gateway_setting')) {
+    function platform_gateway_setting(string $key, string $default = ''): string
+    {
+        if (function_exists('setting')) {
+            $val = setting($key, '');
+            if ($val !== '') {
+                return $val;
+            }
+        }
+        if (function_exists('system_setting')) {
+            $sysVal = system_setting($key, '');
+            if ($sysVal !== '') {
+                return $sysVal;
+            }
+        }
+        $envVal = getenv($key) ?: getenv(strtoupper($key));
+        if ($envVal !== false && $envVal !== '') {
+            return (string) $envVal;
+        }
+        return $default;
+    }
+}
+
 final class PaymentConfig
 {
     public static function defaultGateway(): string
@@ -55,7 +80,8 @@ final class PaymentConfig
 
     public static function environment(): string
     {
-        $environment = strtolower(platform_gateway_setting('payment_environment', PAYMENT_ENVIRONMENT));
+        $defaultEnv = defined('PAYMENT_ENVIRONMENT') ? PAYMENT_ENVIRONMENT : 'test';
+        $environment = strtolower(platform_gateway_setting('payment_environment', $defaultEnv));
         return in_array($environment, ['test', 'live'], true) ? $environment : 'test';
     }
 
@@ -66,27 +92,38 @@ final class PaymentConfig
 
     public static function paystackPublicKey(): string
     {
-        return platform_gateway_setting('paystack_public_key', PAYSTACK_PUBLIC_KEY);
+        $default = defined('PAYSTACK_PUBLIC_KEY') ? PAYSTACK_PUBLIC_KEY : '';
+        return platform_gateway_setting('paystack_public_key', $default);
     }
 
     public static function paystackSecretKey(): string
     {
-        return platform_gateway_setting('paystack_secret_key', PAYSTACK_SECRET_KEY);
+        $default = defined('PAYSTACK_SECRET_KEY') ? PAYSTACK_SECRET_KEY : '';
+        return platform_gateway_setting('paystack_secret_key', $default);
     }
 
     public static function monnifyApiKey(): string
     {
-        return platform_gateway_setting('monnify_api_key', MONNIFY_API_KEY);
+        $default = defined('MONNIFY_API_KEY') ? MONNIFY_API_KEY : '';
+        return platform_gateway_setting('monnify_api_key', $default);
     }
 
     public static function monnifySecretKey(): string
     {
-        return platform_gateway_setting('monnify_secret_key', MONNIFY_SECRET_KEY);
+        $default = defined('MONNIFY_SECRET_KEY') ? MONNIFY_SECRET_KEY : '';
+        return platform_gateway_setting('monnify_secret_key', $default);
     }
 
     public static function monnifyContractCode(): string
     {
-        return platform_gateway_setting('monnify_contract_code', MONNIFY_CONTRACT_CODE);
+        $default = defined('MONNIFY_CONTRACT_CODE') ? MONNIFY_CONTRACT_CODE : '';
+        return platform_gateway_setting('monnify_contract_code', $default);
+    }
+
+    public static function monnifyWebhookSecret(): string
+    {
+        $secret = platform_gateway_setting('monnify_webhook_secret', '');
+        return $secret !== '' ? $secret : self::monnifySecretKey();
     }
 
     public static function monnifyBaseUrl(): string
