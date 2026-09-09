@@ -13,12 +13,13 @@
 <div class="panel">
     <div class="table-responsive">
         <table class="table align-middle data-table">
-            <thead><tr><th>Application No</th><th>Name</th><th>Class</th><th>Parent</th><th>Status</th><th>Enrollment</th><th>Action</th></tr></thead>
+            <thead><tr><th>Application No</th><th>Name</th><th>Type</th><th>Class</th><th>Parent</th><th>Status</th><th>Enrollment</th><th>Action</th></tr></thead>
             <tbody>
             <?php foreach ($applications as $row): ?>
                 <tr>
                     <td><?= e($row['application_number']) ?></td>
                     <td><?= e($row['first_name'] . ' ' . $row['last_name']) ?></td>
+                    <td><span class="badge bg-light text-dark border"><?= e(!empty($row['admission_type']) ? $row['admission_type'] : 'General') ?></span></td>
                     <td><?= e($row['class_name']) ?></td>
                     <td><?= e($row['parent_phone']) ?></td>
                     <td><span class="status <?= e(strtolower(str_replace(' ', '-', $row['status']))) ?>"><?= e($row['status']) ?></span></td>

@@ -26,7 +26,8 @@
             <ul class="navbar-nav ms-auto align-items-lg-center">
                 <li class="nav-item"><a class="nav-link" href="<?= url('apply') ?>">Apply</a></li>
                 <li class="nav-item"><a class="nav-link" href="<?= url('track') ?>">Track</a></li>
-                <li class="nav-item"><button class="btn btn-sm btn-outline-light ms-lg-3" id="themeToggle" type="button">Theme</button></li>
+                <li class="nav-item ms-lg-2"><a class="btn btn-sm btn-warning text-dark fw-bold" href="<?= url('admin/login') ?>">Admin Login</a></li>
+                <li class="nav-item"><button class="btn btn-sm btn-outline-light ms-lg-2" id="themeToggle" type="button">Theme</button></li>
             </ul>
         </div>
     </div>

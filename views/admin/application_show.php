@@ -51,7 +51,7 @@ $documents = [
                 </div>
                 <div class="profile-sub"><?= e($application['application_number']) ?> &nbsp;.&nbsp; <?= e($application['admission_number'] ?: 'Admission number pending') ?> &nbsp;.&nbsp; <strong><?= e($application['student_username'] ?: 'Username pending') ?></strong> &nbsp;.&nbsp; <?= e($application['class_name']) ?></div>
                 <div class="profile-tags">
-                    <span class="profile-pill pill-teal">Priority admission</span>
+                    <span class="profile-pill pill-teal"><i class="ti ti-school me-1"></i><?= e(!empty($application['admission_type']) ? $application['admission_type'] : 'General') ?></span>
                     <span class="profile-pill pill-blue"><?= $score >= 80 ? 'Scholarship eligible' : 'Standard review' ?></span>
                     <span class="profile-pill pill-gray">Day student</span>
                 </div>
@@ -120,6 +120,7 @@ $documents = [
             <div class="profile-field-grid mb-3">
                 <div><div class="profile-fl">School name</div><div class="profile-fv"><?= e($application['previous_school'] ?: 'Not provided') ?></div></div>
                 <div><div class="profile-fl">Previous class</div><div class="profile-fv"><?= e($application['previous_class'] ?? 'Not provided') ?></div></div>
+                <div><div class="profile-fl">Admission category</div><div class="profile-fv"><span class="badge bg-primary-subtle text-primary fw-semibold"><?= e(!empty($application['admission_type']) ? $application['admission_type'] : 'General') ?></span></div></div>
                 <div><div class="profile-fl">Desired class</div><div class="profile-fv"><?= e($application['class_name']) ?></div></div>
                 <div><div class="profile-fl">Reference</div><div class="profile-fv"><?= !empty($application['recommendation_letter']) ? 'Submitted' : 'Pending' ?></div></div>
             </div>

@@ -4,6 +4,7 @@ require_once __DIR__ . '/../models/Applicant.php';
 require_once __DIR__ . '/../models/ClassModel.php';
 require_once __DIR__ . '/../models/Payment.php';
 require_once __DIR__ . '/NotificationController.php';
+require_once __DIR__ . '/../updater/MigrationRunner.php';
 
 final class PublicController
 {
@@ -12,6 +13,7 @@ final class PublicController
     public function __construct()
     {
         $this->db = Database::connect();
+        MigrationRunner::ensureUpToDate($this->db);
     }
 
     public function home(): void

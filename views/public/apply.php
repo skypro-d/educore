@@ -84,6 +84,22 @@ $isFieldRequired = function($key, $default = 'optional') use ($getFieldStatus) {
     </div>
 
     <div class="admission-form-container">
+        <!-- School Admin Portal Quick Access Box -->
+        <div class="card border-0 shadow-sm rounded-3 p-3 mb-4 bg-white border-start border-4 border-primary">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="badge bg-primary text-white p-2 rounded-circle"><i class="ti ti-shield-lock" style="font-size:18px;"></i></span>
+                    <div>
+                        <h6 class="mb-0 fw-bold text-dark">School Administrator Access</h6>
+                        <small class="text-muted">School staff or admissions desk? Sign in to the administrative portal to review and process student applications.</small>
+                    </div>
+                </div>
+                <a href="<?= url('admin/login') ?>" class="btn btn-primary btn-sm px-4 fw-bold text-nowrap">
+                    <i class="ti ti-login me-1"></i> Admin Login
+                </a>
+            </div>
+        </div>
+
         <?php if (!$admissionOpen): ?>
             <div class="alert alert-warning p-4 rounded-3 text-center my-4">
                 <i class="ti ti-lock-access mb-2" style="font-size: 48px; color: #b45309;"></i>

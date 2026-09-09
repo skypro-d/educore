@@ -233,6 +233,7 @@ CREATE TABLE `applicants` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `school_id` int unsigned NOT NULL DEFAULT '1',
   `application_number` varchar(24) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `admission_type` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'General',
   `admission_number` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `student_username` varchar(40) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `first_name` varchar(80) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -297,7 +298,7 @@ CREATE TABLE `applicants` (
 
 LOCK TABLES `applicants` WRITE;
 /*!40000 ALTER TABLE `applicants` DISABLE KEYS */;
-INSERT INTO `applicants` VALUES (1,1,'ADM-2026-00001','SCH/2026/0002','SCH20260002','eyitayo','Micheal','Azzan','Male','2020-01-01','Oyo','lagelu','Nigerian','chires','akobo\r\nOLORUDA','','07081306993','azzanmic@gmail.com','azzan','fisayou','','douctor',2,'tgjdd','primy 6','a','xggaxjg','xguax','aixaixi','agjxagx','07081306993','passports/a1629dfae7101adb5ec443c1.webp','birth_certificates/4710272d3b24462f3c73315c.jpg','results/5139651ad8a0d1347531ed54.png','testimonials/d078a9be9adee608e92def17.jpg','recommendations/d656cbc403d651f76e72b081.jpg','Enrolled','Offered','Completed','2026-06-17 23:14:37','2026-06-04 00:45:24','2026-06-17 23:14:37','qrcodes/std_1.png','ATTENDANCE-STD-1-a9643025','Active','2026-06-17 23:14:37');
+INSERT INTO `applicants` VALUES (1,1,'ADM-2026-00001','General','SCH/2026/0002','SCH20260002','eyitayo','Micheal','Azzan','Male','2020-01-01','Oyo','lagelu','Nigerian','chires','akobo\r\nOLORUDA','','07081306993','azzanmic@gmail.com','azzan','fisayou','','douctor',2,'tgjdd','primy 6','a','xggaxjg','xguax','aixaixi','agjxagx','07081306993','passports/a1629dfae7101adb5ec443c1.webp','birth_certificates/4710272d3b24462f3c73315c.jpg','results/5139651ad8a0d1347531ed54.png','testimonials/d078a9be9adee608e92def17.jpg','recommendations/d656cbc403d651f76e72b081.jpg','Enrolled','Offered','Completed','2026-06-17 23:14:37','2026-06-04 00:45:24','2026-06-17 23:14:37','qrcodes/std_1.png','ATTENDANCE-STD-1-a9643025','Active','2026-06-17 23:14:37');
 /*!40000 ALTER TABLE `applicants` ENABLE KEYS */;
 UNLOCK TABLES;
 

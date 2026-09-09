@@ -25,9 +25,42 @@ final class Applicant
             :emergency_name, :emergency_relationship, :emergency_phone, :passport_photo, :birth_certificate,
             :previous_result, :testimonial, :recommendation_letter, 'Submitted', NOW()
         )";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($data);
-        return (int) $this->db->lastInsertId();
+        try {
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($data);
+            return (int) $this->db->lastInsertId();
+        } catch (PDOException $e) {
+            if (str_contains($e->getMessage(), 'admission_type') || str_contains($e->getMessage(), '1054')) {
+                try {
+                    $this->db->exec("ALTER TABLE `applicants` ADD COLUMN `admission_type` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'General' AFTER `application_number`");
+                    $stmt = $this->db->prepare($sql);
+                    $stmt->execute($data);
+                    return (int) $this->db->lastInsertId();
+                } catch (Throwable) {
+                    $fallbackData = $data;
+                    unset($fallbackData['admission_type']);
+                    $fallbackSql = "INSERT INTO applicants (
+                        application_number, first_name, middle_name, last_name, gender, date_of_birth,
+                        state_of_origin, local_government, nationality, religion, home_address, parent_name, parent_phone,
+                        parent_email, father_name, mother_name, guardian_name, parent_occupation, class_id,
+                        previous_school, previous_class, blood_group, allergies, special_needs,
+                        emergency_name, emergency_relationship, emergency_phone, passport_photo, birth_certificate,
+                        previous_result, testimonial, recommendation_letter, status, created_at
+                    ) VALUES (
+                        :application_number, :first_name, :middle_name, :last_name, :gender, :date_of_birth,
+                        :state_of_origin, :local_government, :nationality, :religion, :home_address, :parent_name, :parent_phone,
+                        :parent_email, :father_name, :mother_name, :guardian_name, :parent_occupation, :class_id,
+                        :previous_school, :previous_class, :blood_group, :allergies, :special_needs,
+                        :emergency_name, :emergency_relationship, :emergency_phone, :passport_photo, :birth_certificate,
+                        :previous_result, :testimonial, :recommendation_letter, 'Submitted', NOW()
+                    )";
+                    $fallbackStmt = $this->db->prepare($fallbackSql);
+                    $fallbackStmt->execute($fallbackData);
+                    return (int) $this->db->lastInsertId();
+                }
+            }
+            throw $e;
+        }
     }
 
     public function all(array $filters = []): array
