@@ -5,7 +5,7 @@ $letterValues = [
     '{student_name}' => $studentName,
     '{first_name}' => $application['first_name'],
     '{last_name}' => $application['last_name'],
-    '{class_name}' => $application['class_name'],
+    '{class_name}' => $application['class_name'] ?? '',
     '{school_name}' => setting('school_name', 'our school'),
     '{application_number}' => $application['application_number'],
     '{admission_number}' => $admissionNumber,
@@ -47,8 +47,14 @@ $letterClosing = setting('admission_letter_closing', 'Congratulations, and welco
         <strong><?= e(setting('principal_name', 'The Principal')) ?></strong>
         <small><?= e(setting('admission_letter_signature_title', 'Principal')) ?></small>
     </div>
-    <div class="no-print text-center mt-4">
-        <button class="btn btn-primary" onclick="window.print()">Print / PDF Download</button>
-        <a class="btn btn-outline-primary" href="<?= e($backUrl ?? url('admin/applications/' . $application['id'])) ?>">Back</a>
+    <div class="no-print text-center mt-4 d-flex justify-content-center align-items-center gap-2 flex-wrap">
+        <button class="btn btn-primary" onclick="window.print()"><i class="ti ti-printer"></i> Print / PDF Download</button>
+        <?php if (!empty($application['parent_email'])): ?>
+            <form method="post" action="<?= url('admin/letter/' . $application['id'] . '/send') ?>" style="display:inline;" onsubmit="return confirm('Email this admission letter to <?= e($application['parent_email']) ?>?');">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-success"><i class="ti ti-mail-forward"></i> Email to Parent</button>
+            </form>
+        <?php endif; ?>
+        <a class="btn btn-outline-secondary" href="<?= e($backUrl ?? url('admin/applications/' . $application['id'])) ?>"><i class="ti ti-arrow-left"></i> Back to Application</a>
     </div>
 </div>

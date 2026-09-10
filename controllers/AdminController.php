@@ -1620,6 +1620,107 @@ final class AdminController
         render('admin/id_card', compact('student'), 'auth');
     }
 
+    /* ─── Admission / Acceptance Letter ───────────────────────────── */
+
+    public function letter(int $applicantId): void
+    {
+        require_admin();
+        $application = (new Applicant($this->db))->find($applicantId);
+        if (!$application) {
+            flash('danger', 'Applicant not found.');
+            redirect('admin/applications');
+        }
+
+        // Generate / ensure official admission number in admission_letters if not already recorded
+        if (empty($application['admission_number'])) {
+            $year = date('Y');
+            $schoolInfo = SchoolContext::info();
+            $schoolCode = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string) ($schoolInfo['school_code'] ?? 'SCH')));
+            $schoolCode = substr($schoolCode !== '' ? $schoolCode : 'SCH', 0, 6);
+
+            $stmtCount = $this->db->prepare("SELECT COUNT(*) + 1 FROM admission_letters WHERE admission_number LIKE ?");
+            $stmtCount->execute([$schoolCode . '/' . $year . '/%']);
+            $nextNum = (int) $stmtCount->fetchColumn();
+            $admissionNumber = sprintf('%s/%s/%05d', $schoolCode, $year, $nextNum);
+
+            try {
+                $schoolId = SchoolContext::id() ?? 1;
+                $stmtIns = $this->db->prepare("INSERT INTO admission_letters (school_id, applicant_id, admission_number, generated_at) VALUES (?, ?, ?, NOW())");
+                $stmtIns->execute([$schoolId, $applicantId, $admissionNumber]);
+                $application['admission_number'] = $admissionNumber;
+            } catch (Throwable $e) {
+                $stmtGet = $this->db->prepare("SELECT admission_number FROM admission_letters WHERE applicant_id = ? LIMIT 1");
+                $stmtGet->execute([$applicantId]);
+                $existing = $stmtGet->fetchColumn();
+                $application['admission_number'] = $existing ?: ('SCH/' . $year . '/' . str_pad((string) $applicantId, 5, '0', STR_PAD_LEFT));
+            }
+        }
+
+        $backUrl = url('admin/applications/' . $applicantId);
+        render('admin/letter', compact('application', 'backUrl'), 'admin');
+    }
+
+    public function sendLetter(int $applicantId): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $application = (new Applicant($this->db))->find($applicantId);
+        if (!$application) {
+            flash('danger', 'Applicant not found.');
+            redirect('admin/applications');
+        }
+
+        $parentEmail = trim($application['parent_email'] ?? '');
+        if (empty($parentEmail) || !filter_var($parentEmail, FILTER_VALIDATE_EMAIL)) {
+            flash('warning', 'No valid parent email address found for this applicant.');
+            redirect('admin/letter/' . $applicantId);
+        }
+
+        $studentName = trim($application['first_name'] . ' ' . $application['last_name']);
+        $schoolName = setting('school_name', APP_NAME);
+        $admissionNumber = $application['admission_number'] ?: ('SCH/' . date('Y') . '/' . str_pad((string) $application['id'], 5, '0', STR_PAD_LEFT));
+
+        $letterValues = [
+            '{student_name}' => $studentName,
+            '{first_name}' => $application['first_name'],
+            '{last_name}' => $application['last_name'],
+            '{class_name}' => $application['class_name'] ?? '',
+            '{school_name}' => $schoolName,
+            '{application_number}' => $application['application_number'],
+            '{admission_number}' => $admissionNumber,
+            '{date}' => date('F j, Y'),
+        ];
+
+        $letterTitle = setting('admission_letter_title', 'Offer of Admission');
+        $letterBody = setting('admission_letter_body', 'We are pleased to inform you that you have been offered admission into {class_name} at {school_name}.');
+        $letterInstruction = setting('admission_letter_instruction', 'Please report to the school office with original copies of your submitted documents.');
+        $letterClosing = setting('admission_letter_closing', 'Congratulations, and welcome to our academic community.');
+
+        $bodyText = strtr($letterBody, $letterValues);
+        $instructionText = strtr($letterInstruction, $letterValues);
+        $closingText = strtr($letterClosing, $letterValues);
+
+        $subject = "{$letterTitle} - {$studentName} ({$application['application_number']})";
+        $emailContent = "<p>Dear <strong>" . htmlspecialchars($studentName, ENT_QUOTES, 'UTF-8') . "</strong>,</p>"
+            . "<p>" . nl2br(htmlspecialchars($bodyText, ENT_QUOTES, 'UTF-8')) . "</p>"
+            . "<p>Your Admission Number is: <strong>" . htmlspecialchars($admissionNumber, ENT_QUOTES, 'UTF-8') . "</strong>.</p>"
+            . "<p>" . nl2br(htmlspecialchars($instructionText, ENT_QUOTES, 'UTF-8')) . "</p>"
+            . "<p>" . nl2br(htmlspecialchars($closingText, ENT_QUOTES, 'UTF-8')) . "</p>"
+            . "<hr style='border:none;border-top:1px solid #e2e8f0;margin:20px 0;'>"
+            . "<p><small style='color:#64748b;'>Issued by " . htmlspecialchars(setting('principal_name', 'The Principal'), ENT_QUOTES, 'UTF-8') . ", " . htmlspecialchars(setting('admission_letter_signature_title', 'Principal'), ENT_QUOTES, 'UTF-8') . "<br>" . htmlspecialchars($schoolName, ENT_QUOTES, 'UTF-8') . "</small></p>";
+
+        $res = Email::send($parentEmail, $subject, $emailContent);
+        if ($res['sent']) {
+            (new ActivityLog($this->db))->record('letter_sent', "Admission letter emailed to parent ({$parentEmail}) for applicant #{$application['application_number']}");
+            flash('success', "Admission letter emailed successfully to {$parentEmail}.");
+        } else {
+            flash('warning', "Failed to email admission letter: " . ($res['error'] ?? 'Email delivery error.'));
+        }
+
+        redirect('admin/letter/' . $applicantId);
+    }
+
     /* Secondary Modules CRUD implementations are at the bottom of this file */
 
     /* â”€â”€â”€ Attendance Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */

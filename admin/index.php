@@ -33,8 +33,15 @@ if (preg_match('#^classes/(\d+)/delete$#', $route, $m)) {
     $controller->deleteClass((int) $m[1]);
     exit;
 }
-if (preg_match('#^letter/(\d+)$#', $route, $m)) {
-    $controller->letter((int) $m[1]);
+if (preg_match('#^(?:applications/(\d+)/letter|letter/(\d+))$#', $route, $m)) {
+    $applicantId = (int) (!empty($m[1]) ? $m[1] : $m[2]);
+    $controller->letter($applicantId);
+    exit;
+}
+if (preg_match('#^(?:applications/(\d+)/letter/send|letter/(\d+)/send)$#', $route, $m)) {
+    require_post();
+    $applicantId = (int) (!empty($m[1]) ? $m[1] : $m[2]);
+    $controller->sendLetter($applicantId);
     exit;
 }
 if (preg_match('#^fee-structures/(\d+)/delete$#', $route, $m)) {
