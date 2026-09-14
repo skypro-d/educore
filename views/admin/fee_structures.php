@@ -142,15 +142,54 @@
                             <input type="text" name="academic_year" class="form-control form-control-sm" value="<?= e(setting('academic_year','')) ?>" placeholder="2024/2025">
                         </div>
                     </div>
+                    <!-- Multi-Class Selection -->
                     <div class="mb-3">
-                        <label class="form-label" style="font-size:13px;font-weight:600;">Class (leave blank = all)</label>
-                        <select name="class_id" class="form-select form-select-sm">
-                            <option value="">All Classes</option>
-                            <?php foreach ($classes as $c): ?>
-                                <option value="<?= $c['id'] ?>"><?= e($c['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label mb-0" style="font-size:13px;font-weight:600;">Applicable Classes</label>
+                            <span id="classSelectBadge" class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size:11px;">All Classes</span>
+                        </div>
+
+                        <!-- All Classes Master Option -->
+                        <div class="form-check p-2 rounded-2 border mb-2" style="background:#f8fafc;">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" name="all_classes" value="1" id="feeAllClasses" checked>
+                            <label class="form-check-label fw-bold text-dark" for="feeAllClasses" style="font-size:13px; cursor:pointer;">
+                                <i class="ti ti-check-double text-primary me-1"></i> Apply to All Classes (Universal Fee)
+                            </label>
+                            <div class="form-text text-muted ps-4" style="font-size:11px;margin-top:2px;">
+                                Creates a fee item that applies across all school classes.
+                            </div>
+                        </div>
+
+                        <!-- Specific Classes Selection Box (shown when All Classes is unchecked) -->
+                        <div id="specificClassesContainer" style="display:none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
+                                <span class="text-muted small" style="font-size:11px;">Select 3 or more classes:</span>
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:11px;" id="btnSelectAllClasses">Select All</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:11px;" id="btnClearAllClasses">Clear</button>
+                                </div>
+                            </div>
+
+                            <!-- Search filter -->
+                            <input type="text" id="filterClassInput" class="form-control form-control-sm mb-2" placeholder="Search class name..." style="font-size:12px;">
+
+                            <!-- Scrollable Class Checkboxes Grid -->
+                            <div class="border rounded-2 p-2" style="max-height: 200px; overflow-y: auto; background: #fff;" id="classListContainer">
+                                <?php foreach ($classes as $c): ?>
+                                    <div class="form-check p-2 rounded-2 mb-1 class-check-row" style="transition: background 0.15s ease; border-bottom: 1px solid #f8fafc;">
+                                        <input class="form-check-input ms-0 me-2 class-item-checkbox" type="checkbox" name="class_ids[]" value="<?= $c['id'] ?>" id="cls_<?= $c['id'] ?>" data-name="<?= strtolower(e($c['name'])) ?>">
+                                        <label class="form-check-label text-dark fw-semibold" for="cls_<?= $c['id'] ?>" style="font-size:12.5px; cursor: pointer;">
+                                            <?= e($c['name']) ?>
+                                        </label>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <div class="form-text text-muted" style="font-size:11px; margin-top: 4px;">
+                                <i class="ti ti-info-circle me-1"></i> A fee structure record will be automatically generated for every selected class.
+                            </div>
+                        </div>
                     </div>
+
                     <div class="form-check">
                         <input type="checkbox" name="is_optional" value="1" class="form-check-input" id="feeOptional">
                         <label class="form-check-label" for="feeOptional" style="font-size:13px;">Optional fee (parents can choose to pay)</label>
@@ -164,3 +203,84 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const feeAllClasses = document.getElementById('feeAllClasses');
+    const specificContainer = document.getElementById('specificClassesContainer');
+    const classCheckboxes = document.querySelectorAll('.class-item-checkbox');
+    const classSelectBadge = document.getElementById('classSelectBadge');
+    const btnSelectAll = document.getElementById('btnSelectAllClasses');
+    const btnClearAll = document.getElementById('btnClearAllClasses');
+    const filterInput = document.getElementById('filterClassInput');
+
+    function updateClassBadge() {
+        if (feeAllClasses && feeAllClasses.checked) {
+            specificContainer.style.display = 'none';
+            classSelectBadge.className = 'badge bg-primary-subtle text-primary border border-primary-subtle';
+            classSelectBadge.textContent = 'All Classes';
+            return;
+        }
+
+        specificContainer.style.display = 'block';
+        const checkedCount = document.querySelectorAll('.class-item-checkbox:checked').length;
+        if (checkedCount === 0) {
+            classSelectBadge.className = 'badge bg-danger-subtle text-danger border border-danger-subtle';
+            classSelectBadge.textContent = '0 Classes (Please select classes)';
+        } else {
+            classSelectBadge.className = 'badge bg-success-subtle text-success border border-success-subtle';
+            classSelectBadge.textContent = checkedCount + ' ' + (checkedCount === 1 ? 'Class' : 'Classes') + ' Selected';
+        }
+    }
+
+    if (feeAllClasses) {
+        feeAllClasses.addEventListener('change', function() {
+            if (!this.checked) {
+                specificContainer.style.display = 'block';
+            }
+            updateClassBadge();
+        });
+    }
+
+    classCheckboxes.forEach(cb => {
+        cb.addEventListener('change', function() {
+            if (this.checked && feeAllClasses && feeAllClasses.checked) {
+                feeAllClasses.checked = false;
+            }
+            updateClassBadge();
+        });
+    });
+
+    if (btnSelectAll) {
+        btnSelectAll.addEventListener('click', function() {
+            classCheckboxes.forEach(cb => {
+                const row = cb.closest('.class-check-row');
+                if (row && row.style.display !== 'none') {
+                    cb.checked = true;
+                }
+            });
+            if (feeAllClasses) feeAllClasses.checked = false;
+            updateClassBadge();
+        });
+    }
+
+    if (btnClearAll) {
+        btnClearAll.addEventListener('click', function() {
+            classCheckboxes.forEach(cb => cb.checked = false);
+            updateClassBadge();
+        });
+    }
+
+    if (filterInput) {
+        filterInput.addEventListener('input', function() {
+            const query = this.value.toLowerCase().trim();
+            document.querySelectorAll('.class-check-row').forEach(row => {
+                const name = row.querySelector('.class-item-checkbox')?.getAttribute('data-name') || '';
+                row.style.display = name.includes(query) ? '' : 'none';
+            });
+        });
+    }
+
+    updateClassBadge();
+});
+</script>

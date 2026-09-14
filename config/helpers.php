@@ -206,10 +206,15 @@ function school_website_url(): string
     return url('');
 }
 
-function setting(string $key, string $default = ''): string
+function setting(string $key, $default = '', bool $reload = false)
 {
     static $schoolRow = null;
     static $appConfigs = null;
+
+    if ($reload) {
+        $schoolRow = null;
+        $appConfigs = null;
+    }
 
     if ($schoolRow === null) {
         try {
@@ -246,6 +251,11 @@ function setting(string $key, string $default = ''): string
     }
 
     return (string) ($appConfigs[$key] ?? $default);
+}
+
+function setting_clear_cache(): void
+{
+    setting('', '', true);
 }
 
 function settings_map(): array
@@ -387,6 +397,31 @@ function mask_phone(?string $phone): string
         return $phone !== '' ? '***' . substr($phone, -2) : '—';
     }
     return substr($phone, 0, 4) . '***' . substr($phone, -3);
+}
+
+/**
+ * Normalize phone / WhatsApp numbers to international standard (Nigerian 08xxx -> 2348xxx).
+ * Preserves already international numbers.
+ */
+function normalize_phone_number(?string $phone): string
+{
+    $phone = trim((string) $phone);
+    if ($phone === '') {
+        return '';
+    }
+
+    $digits = preg_replace('/\D/', '', $phone);
+    if ($digits === '') {
+        return '';
+    }
+
+    // Nigerian local 11 digits starting with 0 (e.g. 08012345678)
+    if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+        return '234' . substr($digits, 1);
+    }
+
+    // Already begins with country code or other international format
+    return $digits;
 }
 
 function send_email_notice(string $to, string $subject, string $body): void

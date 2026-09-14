@@ -9,7 +9,9 @@ require_once __DIR__ . '/../models/ClassModel.php';
 require_once __DIR__ . '/../models/ActivityLog.php';
 require_once __DIR__ . '/../models/Payment.php';
 require_once __DIR__ . '/NotificationController.php';
+require_once __DIR__ . '/../services/AttendanceService.php';
 require_once __DIR__ . '/../updater/MigrationRunner.php';
+require_once __DIR__ . '/../services/StudentEnrollmentService.php';
 
 final class AdminController
 {
@@ -137,6 +139,88 @@ final class AdminController
         render('admin/applications', compact('applications', 'classes', 'filters'), 'admin');
     }
 
+    public function enrolStudent(): void
+    {
+        require_permission('applications');
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            verify_csrf();
+            $mode = trim($_POST['mode'] ?? 'single');
+
+            if ($mode === 'bulk_csv') {
+                if (empty($_FILES['csv_file']['tmp_name']) || !is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
+                    flash('danger', 'Please select a valid CSV file to upload.');
+                    redirect('admin/students/enrol');
+                }
+
+                $sendNotices = !empty($_POST['send_bulk_notices']);
+                $defaultClassId = !empty($_POST['default_class_id']) ? (int) $_POST['default_class_id'] : null;
+
+                try {
+                    $service = new StudentEnrollmentService($this->db);
+                    $res = $service->importCsv($_FILES['csv_file']['tmp_name'], $sendNotices, $defaultClassId);
+
+                    if ($res['enrolled_count'] > 0) {
+                        $msg = "Batch import completed: <strong>{$res['enrolled_count']}</strong> students successfully enrolled.";
+                        if ($res['failed_count'] > 0) {
+                            $msg .= " ({$res['failed_count']} rows could not be imported).";
+                            $_SESSION['csv_import_errors'] = $res['errors'];
+                        }
+                        flash('success', $msg);
+                    } else {
+                        flash('danger', 'No students were imported. ' . implode('<br>', array_slice($res['errors'], 0, 5)));
+                        $_SESSION['csv_import_errors'] = $res['errors'];
+                    }
+                } catch (Throwable $e) {
+                    flash('danger', 'CSV Import error: ' . $e->getMessage());
+                }
+
+                redirect('admin/students/enrol');
+            }
+
+            // Single student direct enrollment
+            $sendEmail = !empty($_POST['send_email_credentials']);
+            $sendSms = !empty($_POST['send_sms_credentials']);
+
+            try {
+                $service = new StudentEnrollmentService($this->db);
+                $result = $service->enrolDirect($_POST, $_FILES['passport_photo'] ?? null, $sendEmail, $sendSms);
+
+                $_SESSION['new_enrollment'] = $result;
+                flash('success', "Student <strong>{$result['student_name']}</strong> successfully enrolled! Admission Number: <strong>{$result['admission_number']}</strong>.");
+                redirect('admin/students/enrol?success=1');
+            } catch (Throwable $e) {
+                flash('danger', $e->getMessage());
+                redirect('admin/students/enrol');
+            }
+        }
+
+        // GET request
+        $classes = (new ClassModel($this->db))->all();
+        $successResult = null;
+        if (!empty($_GET['success']) && isset($_SESSION['new_enrollment'])) {
+            $successResult = $_SESSION['new_enrollment'];
+        }
+        $importErrors = $_SESSION['csv_import_errors'] ?? [];
+        unset($_SESSION['csv_import_errors']);
+
+        render('admin/enrol_student', compact('classes', 'successResult', 'importErrors'), 'admin');
+    }
+
+    public function downloadStudentSampleCsv(): void
+    {
+        require_permission('applications');
+        $service = new StudentEnrollmentService($this->db);
+        $csv = $service->generateSampleCsv();
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="educore_old_students_template.csv"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        echo $csv;
+        exit;
+    }
+
     public function showApplication(int $id): void
     {
         require_admin();
@@ -167,6 +251,209 @@ final class AdminController
         $authorizedPickups = $stmtPickups->fetchAll();
 
         render('admin/application_show', compact('application', 'exitLogs', 'authorizedPickups'), 'admin');
+    }
+
+    public function editStudent(int $id): void
+    {
+        require_permission('applications');
+        $application = (new Applicant($this->db))->find($id);
+        if (!$application) {
+            flash('warning', 'Student record not found.');
+            redirect('admin/applications');
+        }
+
+        $classes = (new ClassModel($this->db))->all();
+        render('admin/student_edit', compact('application', 'classes'), 'admin');
+    }
+
+    public function updateStudent(int $id): void
+    {
+        require_permission('applications');
+        verify_csrf();
+
+        $application = (new Applicant($this->db))->find($id);
+        if (!$application) {
+            flash('warning', 'Student record not found.');
+            redirect('admin/applications');
+        }
+
+        $firstName = trim($_POST['first_name'] ?? '');
+        $middleName = trim($_POST['middle_name'] ?? '');
+        $lastName = trim($_POST['last_name'] ?? '');
+        $gender = trim($_POST['gender'] ?? '');
+        $dob = trim($_POST['date_of_birth'] ?? '');
+        $classId = (int) ($_POST['class_id'] ?? 0);
+        $parentName = trim($_POST['parent_name'] ?? '');
+        $parentPhone = trim($_POST['parent_phone'] ?? '');
+        $parentEmail = trim($_POST['parent_email'] ?? '');
+        $homeAddress = trim($_POST['home_address'] ?? '');
+        $admissionType = trim($_POST['admission_type'] ?? 'General');
+        $admissionNumber = trim($_POST['admission_number'] ?? '');
+        $studentUsername = trim($_POST['student_username'] ?? '');
+        $studentStatus = trim($_POST['student_status'] ?? 'Active');
+        $enrolledAt = trim($_POST['enrolled_at'] ?? '');
+
+        if ($firstName === '' || $lastName === '') {
+            flash('danger', 'First name and last name are required.');
+            redirect('admin/applications/' . $id . '/edit');
+            return;
+        }
+        if ($classId <= 0) {
+            flash('danger', 'Please select a valid class.');
+            redirect('admin/applications/' . $id . '/edit');
+            return;
+        }
+        if ($parentPhone === '' || $parentEmail === '' || !filter_var($parentEmail, FILTER_VALIDATE_EMAIL)) {
+            flash('danger', 'Valid parent phone and email are required.');
+            redirect('admin/applications/' . $id . '/edit');
+            return;
+        }
+
+        // Uniqueness check for admission_number if changed
+        if ($admissionNumber !== '' && $admissionNumber !== ($application['admission_number'] ?? '')) {
+            $stmtCheck = $this->db->prepare("SELECT id FROM applicants WHERE admission_number = ? AND id != ? LIMIT 1");
+            $stmtCheck->execute([$admissionNumber, $id]);
+            if ($stmtCheck->fetch()) {
+                flash('danger', "Admission number '{$admissionNumber}' is already assigned to another student.");
+                redirect('admin/applications/' . $id . '/edit');
+                return;
+            }
+        }
+
+        // Uniqueness check for student_username if changed
+        if ($studentUsername !== '' && $studentUsername !== ($application['student_username'] ?? '')) {
+            $stmtCheckUser = $this->db->prepare("SELECT id FROM student_accounts WHERE username = ? AND applicant_id != ? LIMIT 1");
+            $stmtCheckUser->execute([$studentUsername, $id]);
+            if ($stmtCheckUser->fetch()) {
+                flash('danger', "Student portal username '{$studentUsername}' is already taken.");
+                redirect('admin/applications/' . $id . '/edit');
+                return;
+            }
+        }
+
+        // Optional passport upload
+        $passportPath = $application['passport_photo'] ?? null;
+        if (!empty($_FILES['passport_photo']['tmp_name']) && is_uploaded_file($_FILES['passport_photo']['tmp_name'])) {
+            $imageTypes = [
+                'image/jpeg' => 'jpg',
+                'image/pjpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/x-png' => 'png',
+                'image/webp' => 'webp',
+            ];
+            $uploaded = upload_file('passport_photo', 'passports', $imageTypes);
+            if ($uploaded) {
+                $passportPath = $uploaded;
+            }
+        }
+
+        try {
+            $this->db->beginTransaction();
+
+            $sql = "UPDATE applicants SET
+                first_name = :first_name,
+                middle_name = :middle_name,
+                last_name = :last_name,
+                gender = :gender,
+                date_of_birth = :date_of_birth,
+                nationality = :nationality,
+                state_of_origin = :state_of_origin,
+                local_government = :local_government,
+                religion = :religion,
+                home_address = :home_address,
+                class_id = :class_id,
+                admission_type = :admission_type,
+                admission_number = :admission_number,
+                student_username = :student_username,
+                student_status = :student_status,
+                parent_name = :parent_name,
+                parent_phone = :parent_phone,
+                parent_email = :parent_email,
+                father_name = :father_name,
+                mother_name = :mother_name,
+                guardian_name = :guardian_name,
+                parent_occupation = :parent_occupation,
+                blood_group = :blood_group,
+                allergies = :allergies,
+                special_needs = :special_needs,
+                emergency_name = :emergency_name,
+                emergency_relationship = :emergency_relationship,
+                emergency_phone = :emergency_phone,
+                passport_photo = :passport_photo,
+                enrolled_at = :enrolled_at,
+                updated_at = NOW()
+            WHERE id = :id";
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                ':first_name' => $firstName,
+                ':middle_name' => $middleName !== '' ? $middleName : null,
+                ':last_name' => $lastName,
+                ':gender' => in_array($gender, ['Male', 'Female'], true) ? $gender : 'Male',
+                ':date_of_birth' => $dob ?: $application['date_of_birth'],
+                ':nationality' => trim($_POST['nationality'] ?? 'Nigerian'),
+                ':state_of_origin' => trim($_POST['state_of_origin'] ?? ''),
+                ':local_government' => trim($_POST['local_government'] ?? '') ?: null,
+                ':religion' => trim($_POST['religion'] ?? '') ?: null,
+                ':home_address' => $homeAddress,
+                ':class_id' => $classId,
+                ':admission_type' => $admissionType,
+                ':admission_number' => $admissionNumber !== '' ? $admissionNumber : ($application['admission_number'] ?? null),
+                ':student_username' => $studentUsername !== '' ? $studentUsername : ($application['student_username'] ?? null),
+                ':student_status' => in_array($studentStatus, ['Active','Suspended','Graduated','Transferred','Withdrawn'], true) ? $studentStatus : 'Active',
+                ':parent_name' => $parentName,
+                ':parent_phone' => $parentPhone,
+                ':parent_email' => $parentEmail,
+                ':father_name' => trim($_POST['father_name'] ?? '') ?: null,
+                ':mother_name' => trim($_POST['mother_name'] ?? '') ?: null,
+                ':guardian_name' => trim($_POST['guardian_name'] ?? '') ?: null,
+                ':parent_occupation' => trim($_POST['parent_occupation'] ?? '') ?: null,
+                ':blood_group' => trim($_POST['blood_group'] ?? '') ?: null,
+                ':allergies' => trim($_POST['allergies'] ?? '') ?: null,
+                ':special_needs' => trim($_POST['special_needs'] ?? '') ?: null,
+                ':emergency_name' => trim($_POST['emergency_name'] ?? '') ?: null,
+                ':emergency_relationship' => trim($_POST['emergency_relationship'] ?? '') ?: null,
+                ':emergency_phone' => trim($_POST['emergency_phone'] ?? '') ?: null,
+                ':passport_photo' => $passportPath,
+                ':enrolled_at' => ($enrolledAt !== '' && strtotime($enrolledAt)) ? date('Y-m-d H:i:s', strtotime($enrolledAt)) : $application['enrolled_at'],
+                ':id' => $id,
+            ]);
+
+            // Sync student_accounts username
+            if ($studentUsername !== '') {
+                $this->db->prepare("UPDATE student_accounts SET username = ? WHERE applicant_id = ?")
+                    ->execute([$studentUsername, $id]);
+            }
+
+            // Sync parent_accounts phone and email
+            $this->db->prepare("UPDATE parent_accounts SET phone = ?, email = ? WHERE applicant_id = ?")
+                ->execute([$parentPhone, $parentEmail, $id]);
+
+            // Sync admission_letters admission_number
+            if ($admissionNumber !== '') {
+                $this->db->prepare("UPDATE admission_letters SET admission_number = ? WHERE applicant_id = ?")
+                    ->execute([$admissionNumber, $id]);
+            }
+
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log('Student details update failed: ' . $e->getMessage());
+            flash('danger', 'Failed to update student details: ' . $e->getMessage());
+            redirect('admin/applications/' . $id . '/edit');
+            return;
+        }
+
+        // Activity log
+        try {
+            $fullName = trim($firstName . ' ' . $lastName);
+            (new ActivityLog($this->db))->record('student_updated', "Updated details for student {$admissionNumber} ({$fullName})");
+        } catch (Throwable $logEx) {}
+
+        flash('success', "Student details for <strong>{$firstName} {$lastName}</strong> have been updated successfully.");
+        redirect('admin/applications/' . $id);
     }
 
     public function updateStatus(int $id, string $status): void
@@ -788,19 +1075,60 @@ final class AdminController
         $amount = (float) ($_POST['amount'] ?? 0);
         $term = $_POST['term'] ?? 'First';
         $academicYear = trim($_POST['academic_year'] ?? current_academic_year());
-        $classId = $_POST['class_id'] !== '' ? (int) $_POST['class_id'] : null;
         $isOptional = isset($_POST['is_optional']) ? 1 : 0;
 
-        if ($feeName !== '') {
+        if ($feeName === '') {
+            flash('danger', 'Fee name is required.');
+            redirect('admin/fee-structures');
+            return;
+        }
+
+        // Support multiple classes selection
+        $classIds = $_POST['class_ids'] ?? [];
+        if (!is_array($classIds)) {
+            $classIds = $classIds !== '' ? [$classIds] : [];
+        }
+        if (empty($classIds) && isset($_POST['class_id']) && $_POST['class_id'] !== '') {
+            $classIds = [$_POST['class_id']];
+        }
+
+        // Check if All Classes was chosen or no specific classes specified
+        $allClassesChosen = isset($_POST['all_classes']) && $_POST['all_classes'] == '1';
+        if (empty($classIds) || $allClassesChosen || in_array('all', $classIds, true)) {
+            $stmt = $this->db->prepare(
+                "INSERT INTO fee_structures (class_id, term, academic_year, fee_name, amount, is_optional) 
+                 VALUES (NULL, ?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([$term, $academicYear, $feeName, $amount, $isOptional]);
+            flash('success', "Fee structure item '{$feeName}' added for All Classes.");
+            redirect('admin/fee-structures');
+            return;
+        }
+
+        // Multiple specific classes
+        try {
+            $this->db->beginTransaction();
             $stmt = $this->db->prepare(
                 "INSERT INTO fee_structures (class_id, term, academic_year, fee_name, amount, is_optional) 
                  VALUES (?, ?, ?, ?, ?, ?)"
             );
-            $stmt->execute([$classId, $term, $academicYear, $feeName, $amount, $isOptional]);
-            flash('success', 'Fee structure item added.');
-        } else {
-            flash('danger', 'Fee name is required.');
+            $insertedCount = 0;
+            foreach ($classIds as $cid) {
+                $cid = (int) $cid;
+                if ($cid > 0) {
+                    $stmt->execute([$cid, $term, $academicYear, $feeName, $amount, $isOptional]);
+                    $insertedCount++;
+                }
+            }
+            $this->db->commit();
+            flash('success', "Fee structure item '{$feeName}' successfully configured for {$insertedCount} selected classes.");
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            flash('danger', 'Failed to save fee structure: ' . $e->getMessage());
         }
+
         redirect('admin/fee-structures');
     }
 
@@ -1849,6 +2177,51 @@ final class AdminController
                 }
             }
             flash('success', 'Student Exit & Dismissal settings saved successfully.');
+        } elseif ($section === 'notifications') {
+            $tabRedirect = 'notifications';
+            // Channel & Event Toggles
+            $toggles = [
+                'attendance_sms_enabled',
+                'attendance_email_enabled',
+                'attendance_whatsapp_enabled',
+                'notify_on_checkin',
+                'notify_on_checkout'
+            ];
+            foreach ($toggles as $key) {
+                $val = isset($postSettings[$key]) ? '1' : '0';
+                $stmt->execute([$key, $val]);
+            }
+
+            // WhatsApp Provider, Templates & Text Fields
+            $textFields = [
+                'whatsapp_provider',
+                'whatsapp_api_url',
+                'whatsapp_phone_number_id',
+                'whatsapp_sender_id',
+                'whatsapp_template_name_checkin',
+                'whatsapp_template_name_checkout',
+                'attendance_email_subject_checkin',
+                'attendance_email_template_checkin',
+                'attendance_email_subject_checkout',
+                'attendance_email_template_checkout',
+                'attendance_whatsapp_template_checkin',
+                'attendance_whatsapp_template_checkout'
+            ];
+            foreach ($textFields as $key) {
+                if (isset($postSettings[$key])) {
+                    $stmt->execute([$key, trim((string) $postSettings[$key])]);
+                }
+            }
+
+            // Token update only if provided and not masked placeholder
+            if (isset($postSettings['whatsapp_api_token'])) {
+                $rawToken = trim((string) $postSettings['whatsapp_api_token']);
+                if ($rawToken !== '' && !str_starts_with($rawToken, '••••')) {
+                    $stmt->execute(['whatsapp_api_token', $rawToken]);
+                }
+            }
+
+            flash('success', 'Attendance Notification settings saved successfully.');
         } else {
             // Fallback for generic or all-in-one POST: only update keys that were explicitly submitted
             foreach ($postSettings as $key => $val) {
@@ -1879,7 +2252,209 @@ final class AdminController
             flash('danger', 'Test SMS failed: ' . e(substr($result['response'], 0, 200)));
         }
 
-        redirect('admin/attendance-settings#tab-sms');
+        redirect('admin/attendance-settings?tab=sms');
+    }
+
+    public function testAttendanceEmail(): void
+    {
+        require_permission('attendance');
+        verify_csrf();
+
+        $recipient = trim($_POST['test_email'] ?? '');
+        $res = AttendanceService::getNotificationService($this->db)->testEmail($recipient);
+
+        if ($res['success']) {
+            flash('success', $res['message']);
+        } else {
+            flash('danger', $res['message']);
+        }
+
+        redirect('admin/attendance-settings?tab=notifications');
+    }
+
+    public function testAttendanceWhatsapp(): void
+    {
+        require_permission('attendance');
+        verify_csrf();
+
+        $recipient = trim($_POST['test_phone'] ?? '');
+        $res = AttendanceService::getNotificationService($this->db)->testWhatsApp($recipient);
+
+        if ($res['success']) {
+            flash('success', $res['message']);
+        } else {
+            flash('danger', $res['message']);
+        }
+
+        redirect('admin/attendance-settings?tab=notifications');
+    }
+
+    public function attendanceNotificationLogs(): void
+    {
+        require_permission('attendance');
+
+        $schoolId = SchoolContext::id();
+        $studentSearch = trim($_GET['student'] ?? '');
+        $dateFilter    = trim($_GET['date'] ?? '');
+        $eventFilter   = trim($_GET['event'] ?? '');
+        $channelFilter = trim($_GET['channel'] ?? '');
+        $statusFilter  = trim($_GET['status'] ?? '');
+        $page          = max(1, (int) ($_GET['page'] ?? 1));
+        $limit         = 25;
+        $offset        = ($page - 1) * $limit;
+
+        $where = ["l.school_id = ?"];
+        $params = [$schoolId];
+
+        if ($studentSearch !== '') {
+            $where[] = "(a.first_name LIKE ? OR a.last_name LIKE ? OR a.application_number LIKE ? OR a.admission_number LIKE ? OR l.recipient LIKE ?)";
+            $q = "%{$studentSearch}%";
+            $params[] = $q;
+            $params[] = $q;
+            $params[] = $q;
+            $params[] = $q;
+            $params[] = $q;
+        }
+
+        if ($dateFilter !== '') {
+            $where[] = "DATE(l.created_at) = ?";
+            $params[] = $dateFilter;
+        }
+
+        if ($eventFilter !== '') {
+            $where[] = "l.event = ?";
+            $params[] = $eventFilter;
+        }
+
+        if ($channelFilter !== '') {
+            $where[] = "l.channel = ?";
+            $params[] = $channelFilter;
+        }
+
+        if ($statusFilter !== '') {
+            $where[] = "l.status = ?";
+            $params[] = $statusFilter;
+        }
+
+        $whereSql = implode(' AND ', $where);
+
+        // Total count
+        $countStmt = $this->db->prepare(
+            "SELECT COUNT(*) 
+             FROM attendance_notification_logs l 
+             LEFT JOIN applicants a ON a.id = l.student_id 
+             WHERE {$whereSql}"
+        );
+        $countStmt->execute($params);
+        $totalLogs = (int) $countStmt->fetchColumn();
+        $totalPages = max(1, (int) ceil($totalLogs / $limit));
+
+        // Fetch logs
+        $sql = "SELECT l.*, 
+                       a.first_name, a.last_name, a.application_number, a.admission_number, a.parent_name, a.passport_photo,
+                       c.name AS class_name
+                FROM attendance_notification_logs l
+                LEFT JOIN applicants a ON a.id = l.student_id
+                LEFT JOIN classes c ON c.id = a.class_id
+                WHERE {$whereSql}
+                ORDER BY l.id DESC
+                LIMIT {$limit} OFFSET {$offset}";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Summary counts for badges
+        $stats = [
+            'total'    => $totalLogs,
+            'sms'      => (int) $this->db->query("SELECT COUNT(*) FROM attendance_notification_logs WHERE school_id = {$schoolId} AND channel = 'sms'")->fetchColumn(),
+            'email'    => (int) $this->db->query("SELECT COUNT(*) FROM attendance_notification_logs WHERE school_id = {$schoolId} AND channel = 'email'")->fetchColumn(),
+            'whatsapp' => (int) $this->db->query("SELECT COUNT(*) FROM attendance_notification_logs WHERE school_id = {$schoolId} AND channel = 'whatsapp'")->fetchColumn(),
+            'failed'   => (int) $this->db->query("SELECT COUNT(*) FROM attendance_notification_logs WHERE school_id = {$schoolId} AND status = 'failed'")->fetchColumn(),
+        ];
+
+        render('admin/attendance_notification_logs', compact(
+            'logs',
+            'totalLogs',
+            'totalPages',
+            'page',
+            'limit',
+            'studentSearch',
+            'dateFilter',
+            'eventFilter',
+            'channelFilter',
+            'statusFilter',
+            'stats'
+        ), 'admin');
+    }
+
+    public function retryNotificationLog(): void
+    {
+        require_permission('attendance');
+        verify_csrf();
+
+        $logId = (int) ($_POST['log_id'] ?? 0);
+        $schoolId = SchoolContext::id();
+
+        // Ensure the log belongs to this school
+        $chk = $this->db->prepare("SELECT id FROM attendance_notification_logs WHERE id = ? AND school_id = ? LIMIT 1");
+        $chk->execute([$logId, $schoolId]);
+        if (!$chk->fetch()) {
+            flash('danger', 'Unauthorized or invalid notification log record.');
+            redirect('admin/attendance-notification-logs');
+        }
+
+        $res = AttendanceService::getNotificationService($this->db)->retry($logId);
+        if ($res['success']) {
+            flash('success', $res['message']);
+        } else {
+            flash('warning', $res['message']);
+        }
+
+        redirect($_SERVER['HTTP_REFERER'] ?? url('admin/attendance-notification-logs'));
+    }
+
+    public function updateNotificationPreferences(int $applicantId): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $schoolId = SchoolContext::id();
+        $stmt = $this->db->prepare("SELECT id FROM applicants WHERE id = ? AND school_id = ? LIMIT 1");
+        $stmt->execute([$applicantId, $schoolId]);
+        if (!$stmt->fetch()) {
+            flash('danger', 'Student not found.');
+            redirect('admin/applications');
+        }
+
+        $parentEmail    = trim($_POST['parent_email'] ?? '');
+        $parentWhatsapp = trim($_POST['parent_whatsapp'] ?? '');
+        $notifySms      = isset($_POST['notify_sms']) ? 1 : 0;
+        $notifyEmail    = isset($_POST['notify_email']) ? 1 : 0;
+        $notifyWhatsapp = isset($_POST['notify_whatsapp']) ? 1 : 0;
+
+        $upd = $this->db->prepare(
+            "UPDATE applicants 
+             SET parent_email = ?, 
+                 parent_whatsapp = ?, 
+                 notify_sms = ?, 
+                 notify_email = ?, 
+                 notify_whatsapp = ? 
+             WHERE id = ? AND school_id = ?"
+        );
+        $upd->execute([
+            $parentEmail,
+            $parentWhatsapp,
+            $notifySms,
+            $notifyEmail,
+            $notifyWhatsapp,
+            $applicantId,
+            $schoolId
+        ]);
+
+        (new ActivityLog($this->db))->record('notification_prefs_updated', "Updated attendance notification preferences for applicant #{$applicantId}");
+        flash('success', 'Parent notification preferences updated successfully.');
+        redirect('admin/applications/' . $applicantId);
     }
 
     public function deleteSmsLog(int $id): void
@@ -2534,7 +3109,8 @@ final class AdminController
             'exit_reason' => $exitReason,
             'pickup_person_name' => $pickupPersonName
         ];
-        $smsSent = send_exit_sms($this->db, $student, $exitData, $exitLogId);
+        AttendanceService::dispatchCheckoutNotification($student, $exitData, $exitLogId);
+        $smsSent = (setting('attendance_sms_enabled', '1') === '1' && setting('exit_sms_enabled', '1') === '1');
 
         echo json_encode([
             'success' => true,
@@ -2664,7 +3240,8 @@ final class AdminController
             'exit_reason' => $exitReason,
             'pickup_person_name' => $pickupPersonName
         ];
-        $smsSent = send_exit_sms($this->db, $student, $exitData, $exitLogId);
+        AttendanceService::dispatchCheckoutNotification($student, $exitData, $exitLogId);
+        $smsSent = (setting('attendance_sms_enabled', '1') === '1' && setting('exit_sms_enabled', '1') === '1');
 
         echo json_encode([
             'success' => true,

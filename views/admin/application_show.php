@@ -35,7 +35,12 @@ $documents = [
 ?>
 
 <div class="profile-page">
-    <a class="profile-back" href="<?= url('admin/dashboard') ?>"><i class="ti ti-arrow-left"></i> Back to dashboard</a>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <a class="profile-back mb-0" href="<?= url('admin/applications') ?>"><i class="ti ti-arrow-left"></i> Back to students</a>
+        <a class="btn btn-sm btn-primary rounded-3 px-3 shadow-sm" href="<?= url('admin/students/' . $application['id'] . '/edit') ?>">
+            <i class="ti ti-edit me-1"></i> Edit Student Details
+        </a>
+    </div>
 
     <div class="profile-card">
         <div class="profile-head">
@@ -103,6 +108,25 @@ $documents = [
                 <div><div class="profile-fl">Father</div><div class="profile-fv"><?= e($application['father_name'] ?? 'Not provided') ?></div></div>
                 <div><div class="profile-fl">Mother</div><div class="profile-fv"><?= e($application['mother_name'] ?? 'Not provided') ?></div></div>
             </div>
+            <hr class="profile-divider">
+            <div class="profile-section-label" style="margin-top:10px;"><i class="ti ti-bell-ringing"></i> Attendance Notifications</div>
+            <div class="profile-field-grid mb-2">
+                <div>
+                    <div class="profile-fl">WhatsApp</div>
+                    <div class="profile-fv"><?= e(!empty($application['parent_whatsapp']) ? $application['parent_whatsapp'] : ($application['parent_phone'] ?: 'Same as Phone')) ?></div>
+                </div>
+                <div>
+                    <div class="profile-fl">Channels</div>
+                    <div class="profile-fv d-flex gap-1 flex-wrap pt-1">
+                        <span class="badge <?= ($application['notify_sms'] ?? 1) ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary' ?>">SMS</span>
+                        <span class="badge <?= ($application['notify_email'] ?? 1) ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary' ?>">Email</span>
+                        <span class="badge <?= ($application['notify_whatsapp'] ?? 1) ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary' ?>">WhatsApp</span>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm w-100 mt-2" data-bs-toggle="modal" data-bs-target="#notifPrefsModal" style="border-radius:8px;font-weight:600;font-size:12px;">
+                <i class="ti ti-adjustments me-1"></i> Edit Notification Preferences
+            </button>
         </div>
     </div>
 
@@ -271,7 +295,7 @@ $documents = [
 
         <div class="profile-card">
             <div class="profile-section-label"><i class="ti ti-settings"></i> Actions</div>
-        <div class="profile-actions">
+            <a class="profile-btn profile-btn-primary" href="<?= url('admin/students/' . $application['id'] . '/edit') ?>"><i class="ti ti-edit"></i> Edit student details</a>
             <?php if ($application['status'] === 'Enrolled'): ?>
                 <a class="profile-btn profile-btn-primary" href="<?= url('admin/applications/' . $application['id'] . '/id-card') ?>"><i class="ti ti-id"></i> Print ID Card</a>
                 <a class="profile-btn profile-btn-primary" href="<?= url('admin/letter/' . $application['id']) ?>"><i class="ti ti-mail"></i> View admission letter</a>
@@ -295,6 +319,63 @@ $documents = [
                 <form method="post" action="<?= url('admin/applications/' . $application['id'] . '/approve') ?>"><?= csrf_field() ?><button class="profile-btn profile-btn-primary" type="submit"><i class="ti ti-circle-check"></i> Approve</button></form>
                 <form method="post" action="<?= url('admin/applications/' . $application['id'] . '/reject') ?>"><?= csrf_field() ?><button class="profile-btn profile-btn-danger" type="submit"><i class="ti ti-x"></i> Reject</button></form>
             <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Edit Notification Preferences -->
+<div class="modal fade" id="notifPrefsModal" tabindex="-1" aria-labelledby="notifPrefsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="notifPrefsModalLabel"><i class="ti ti-bell-ringing me-1"></i> Attendance Notification Preferences</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="<?= url('admin/applications/' . $application['id'] . '/notification-preferences') ?>">
+                <?= csrf_field() ?>
+                <div class="modal-body p-4">
+                    <p class="text-muted small mb-3">
+                        Configure parent contact details and choose which notification channels (SMS, Email, WhatsApp) are enabled for <strong><?= e($fullName) ?></strong>.
+                    </p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Parent Email Address</label>
+                        <input type="email" class="form-control" name="parent_email" value="<?= e($application['parent_email'] ?? '') ?>" placeholder="e.g. parent@example.com">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Parent WhatsApp Number</label>
+                        <input type="text" class="form-control" name="parent_whatsapp" value="<?= e($application['parent_whatsapp'] ?? '') ?>" placeholder="e.g. 08012345678 or 2348012345678">
+                        <div class="form-text small">Leave empty to use primary parent phone (<?= e($application['parent_phone'] ?? 'None') ?>).</div>
+                    </div>
+
+                    <div class="card p-3 bg-light border-0 mb-2">
+                        <div class="fw-bold small mb-2 text-dark">Active Channels for this Student:</div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" role="switch" id="prefSms" name="notify_sms" value="1" <?= ($application['notify_sms'] ?? 1) ? 'checked' : '' ?>>
+                            <label class="form-check-label small" for="prefSms">
+                                <strong>SMS Notifications</strong>
+                            </label>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" role="switch" id="prefEmail" name="notify_email" value="1" <?= ($application['notify_email'] ?? 1) ? 'checked' : '' ?>>
+                            <label class="form-check-label small" for="prefEmail">
+                                <strong>Email Notifications</strong>
+                            </label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="prefWhatsapp" name="notify_whatsapp" value="1" <?= ($application['notify_whatsapp'] ?? 1) ? 'checked' : '' ?>>
+                            <label class="form-check-label small" for="prefWhatsapp">
+                                <strong>WhatsApp Notifications</strong>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-device-floppy me-1"></i> Save Preferences</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

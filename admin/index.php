@@ -10,6 +10,12 @@ $academic = new AcademicController();
 $attendance = new AttendanceController();
 
 // Dynamic / Parameterized routes
+if (preg_match('#^(?:applications|students)/(\d+)/edit$#', $route, $m)) {
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? $controller->updateStudent((int) $m[1])
+        : $controller->editStudent((int) $m[1]);
+    exit;
+}
 if (preg_match('#^applications/(\d+)$#', $route, $m)) {
     $controller->showApplication((int) $m[1]);
     exit;
@@ -26,6 +32,11 @@ if (preg_match('#^applications/(\d+)/(approve|reject|terminate)$#', $route, $m))
 if (preg_match('#^applications/(\d+)/(review|exam|exam-completed|interview|enroll)$#', $route, $m)) {
     $statusMap = ['review' => 'Under Review', 'exam' => 'Awaiting Exam', 'exam-completed' => 'Exam Completed', 'interview' => 'Interview Scheduled', 'enroll' => 'Enrolled'];
     $controller->updateStatus((int) $m[1], $statusMap[$m[2]]);
+    exit;
+}
+if (preg_match('#^applications/(\d+)/notification-preferences$#', $route, $m)) {
+    require_post();
+    $controller->updateNotificationPreferences((int) $m[1]);
     exit;
 }
 if (preg_match('#^classes/(\d+)/delete$#', $route, $m)) {
@@ -150,6 +161,13 @@ switch ($route) {
     case 'applications':
         $controller->applications();
         break;
+    case 'students/enrol':
+    case 'enrol-student':
+        $controller->enrolStudent();
+        break;
+    case 'students/sample-csv':
+        $controller->downloadStudentSampleCsv();
+        break;
     case 'classes':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $controller->saveClass() : $controller->classes();
         break;
@@ -217,8 +235,23 @@ switch ($route) {
     case 'attendance-settings/test-sms':
         $controller->testSms();
         break;
+    case 'attendance-settings/test-email':
+        require_post();
+        $controller->testAttendanceEmail();
+        break;
+    case 'attendance-settings/test-whatsapp':
+        require_post();
+        $controller->testAttendanceWhatsapp();
+        break;
     case 'attendance-settings/run-auto-absent':
         $attendance->runAutoAbsent();
+        break;
+    case 'attendance-notification-logs':
+        $controller->attendanceNotificationLogs();
+        break;
+    case 'attendance-notification-logs/retry':
+        require_post();
+        $controller->retryNotificationLog();
         break;
     case 'devices':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $controller->saveDevice() : $controller->devices();

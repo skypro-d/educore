@@ -69,6 +69,9 @@ $activeTab = $_GET['tab'] ?? 'time-rules';
     <button class="att-settings-tab <?= $activeTab==='sms' ? 'active' : '' ?>" data-tab="sms" type="button">
         <i class="ti ti-message-dots"></i> SMS Configuration
     </button>
+    <button class="att-settings-tab <?= $activeTab==='notifications' ? 'active' : '' ?>" data-tab="notifications" type="button">
+        <i class="ti ti-bell-ringing"></i> Attendance Notifications
+    </button>
     <button class="att-settings-tab <?= $activeTab==='auto-absent' ? 'active' : '' ?>" data-tab="auto-absent" type="button">
         <i class="ti ti-user-x"></i> Auto-Absent
     </button>
@@ -309,6 +312,304 @@ Thank you.</div>
                 <i class="ti ti-send"></i> Send Test SMS
             </button>
         </form>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB: ATTENDANCE NOTIFICATIONS (MULTI-CHANNEL)           -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="att-tab-panel <?= $activeTab==='notifications' ? 'active' : '' ?>" id="tab-notifications">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h5 class="mb-1" style="font-weight:700;color:var(--brand-primary,#0b3d91);"><i class="ti ti-bell-ringing"></i> Multi-Channel Parent Attendance Notifications</h5>
+            <p class="text-muted small mb-0">Configure global SMS, Email, and WhatsApp delivery channels, arrival/dismissal triggers, and message templates.</p>
+        </div>
+        <a href="<?= url('admin/attendance-notification-logs') ?>" class="sa-btn sa-btn-secondary btn-sm">
+            <i class="ti ti-list-details"></i> View Notification Logs
+        </a>
+    </div>
+
+    <form method="POST" action="<?= url('admin/attendance-settings') ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="section" value="notifications">
+
+        <!-- Card 1: Channel Master Switches -->
+        <div class="sa-card" style="margin-bottom:20px;">
+            <div class="sa-card-title"><i class="ti ti-broadcast"></i> Active Delivery Channels</div>
+            <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">
+                Enable or disable parent notification channels globally. Any combination can be active simultaneously (e.g. SMS only, Email only, WhatsApp only, SMS + Email, All three, or all disabled).
+            </p>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="sms-toggle h-100" style="margin-bottom:0;">
+                        <label class="sms-switch">
+                            <input type="checkbox" name="settings[attendance_sms_enabled]" value="1"
+                                   <?= ($map['attendance_sms_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>
+                            <span class="slider"></span>
+                        </label>
+                        <div class="toggle-label">
+                            <strong><i class="ti ti-message-dots text-primary"></i> SMS Alerts</strong>
+                            <span>Real-time SMS via gateway.</span>
+                            <div class="mt-1">
+                                <a href="javascript:void(0)" onclick="document.querySelector('[data-tab=\'sms\']').click()" class="text-decoration-none" style="font-size:11px;color:var(--brand-primary,#0b3d91);font-weight:600;">
+                                    SMS Gateway Settings &rarr;
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="sms-toggle h-100" style="margin-bottom:0;">
+                        <label class="sms-switch">
+                            <input type="checkbox" name="settings[attendance_email_enabled]" value="1"
+                                   <?= ($map['attendance_email_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>
+                            <span class="slider"></span>
+                        </label>
+                        <div class="toggle-label">
+                            <strong><i class="ti ti-mail text-info"></i> Email Alerts</strong>
+                            <span>HTML email alerts to parent email address via SMTP.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="sms-toggle h-100" style="margin-bottom:0;">
+                        <label class="sms-switch">
+                            <input type="checkbox" name="settings[attendance_whatsapp_enabled]" value="1"
+                                   <?= ($map['attendance_whatsapp_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>
+                            <span class="slider"></span>
+                        </label>
+                        <div class="toggle-label">
+                            <strong><i class="ti ti-brand-whatsapp text-success"></i> WhatsApp Alerts</strong>
+                            <span>Instant WhatsApp messages via Meta Cloud API, Termii, or Custom REST.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Event Triggers -->
+        <div class="sa-card" style="margin-bottom:20px;">
+            <div class="sa-card-title"><i class="ti ti-bell-ringing"></i> Notification Event Triggers</div>
+            <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">
+                Choose which attendance events trigger notifications to parents across the active channels.
+            </p>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="sms-toggle" style="margin-bottom:0;">
+                        <label class="sms-switch">
+                            <input type="checkbox" name="settings[notify_on_checkin]" value="1"
+                                   <?= ($map['notify_on_checkin'] ?? '1') === '1' ? 'checked' : '' ?>>
+                            <span class="slider"></span>
+                        </label>
+                        <div class="toggle-label">
+                            <strong>✅ Check-In Notifications (Gate Arrival)</strong>
+                            <span>Notify parent when student checks in (via Gate Scanner or Manual Attendance).</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="sms-toggle" style="margin-bottom:0;">
+                        <label class="sms-switch">
+                            <input type="checkbox" name="settings[notify_on_checkout]" value="1"
+                                   <?= ($map['notify_on_checkout'] ?? '1') === '1' ? 'checked' : '' ?>>
+                            <span class="slider"></span>
+                        </label>
+                        <div class="toggle-label">
+                            <strong>🚪 Check-Out / Exit Notifications (Departure)</strong>
+                            <span>Notify parent when student departs premises (via Exit Scanner or Gatekeeper).</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: WhatsApp Gateway Settings -->
+        <div class="sa-card" style="margin-bottom:20px;">
+            <div class="sa-card-title"><i class="ti ti-brand-whatsapp"></i> WhatsApp Provider Configuration</div>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">WhatsApp Provider</label>
+                    <select class="form-select" name="settings[whatsapp_provider]" id="whatsappProviderSelect">
+                        <?php 
+                        $providers = [
+                            'meta'   => 'Meta Cloud API (Official WhatsApp Business)',
+                            'termii' => 'Termii WhatsApp API',
+                            'custom' => 'Custom REST API / Webhook',
+                            'stub'   => 'Stub Mode (Testing & Log Only)'
+                        ];
+                        $curProv = $map['whatsapp_provider'] ?? 'stub';
+                        foreach ($providers as $pval => $plbl): ?>
+                            <option value="<?= e($pval) ?>" <?= $curProv === $pval ? 'selected' : '' ?>><?= e($plbl) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="form-text" id="whatsappProviderNote">
+                        Select your preferred WhatsApp delivery integration.
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">API Endpoint / Base URL</label>
+                    <input class="form-control" name="settings[whatsapp_api_url]"
+                           value="<?= e($map['whatsapp_api_url'] ?? 'https://graph.facebook.com/v19.0') ?>"
+                           placeholder="https://graph.facebook.com/v19.0">
+                    <div class="form-text">Endpoint URL for Meta Cloud API or custom gateway</div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">API Token / Secret Key</label>
+                    <input class="form-control" type="password" autocomplete="new-password"
+                           name="settings[whatsapp_api_token]"
+                           value="<?= !empty($map['whatsapp_api_token']) ? '••••••••••••••••' : '' ?>"
+                           placeholder="Permanent Access Token or API Key">
+                    <div class="form-text">Kept secure. Leave unchanged to retain current token.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">WhatsApp Phone Number ID <span class="text-muted">(Meta Cloud API)</span></label>
+                    <input class="form-control" name="settings[whatsapp_phone_number_id]"
+                           value="<?= e($map['whatsapp_phone_number_id'] ?? '') ?>"
+                           placeholder="e.g. 104928374829102">
+                    <div class="form-text">Found in Meta App Dashboard &rarr; WhatsApp &rarr; API Setup</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Sender ID / From Number <span class="text-muted">(Termii / Custom)</span></label>
+                    <input class="form-control" name="settings[whatsapp_sender_id]"
+                           value="<?= e($map['whatsapp_sender_id'] ?? '') ?>"
+                           placeholder="e.g. 2348012345678 or approved Sender ID">
+                    <div class="form-text">Registered WhatsApp phone number or approved sender name</div>
+                </div>
+            </div>
+
+            <!-- Meta Template Names -->
+            <div class="row g-3 mt-1" id="whatsappMetaFields">
+                <div class="col-md-6">
+                    <label class="form-label">Meta Cloud Check-In Template Name</label>
+                    <input class="form-control" name="settings[whatsapp_template_name_checkin]"
+                           value="<?= e($map['whatsapp_template_name_checkin'] ?? 'attendance_checkin') ?>"
+                           placeholder="attendance_checkin">
+                    <div class="form-text">Approved Meta template name (params: {{1}}=student, {{2}}=time, {{3}}=school)</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Meta Cloud Check-Out Template Name</label>
+                    <input class="form-control" name="settings[whatsapp_template_name_checkout]"
+                           value="<?= e($map['whatsapp_template_name_checkout'] ?? 'attendance_checkout') ?>"
+                           placeholder="attendance_checkout">
+                    <div class="form-text">Approved Meta template name (params: {{1}}=student, {{2}}=time, {{3}}=school)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 4: Message Templates -->
+        <div class="sa-card" style="margin-bottom:20px;">
+            <div class="sa-card-title"><i class="ti ti-file-code"></i> Message Templates (Email &amp; WhatsApp)</div>
+            
+            <div class="p-3 mb-3" style="background:#f8faff;border:1px solid #e0e7ff;border-radius:8px;">
+                <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:4px;">Available Dynamic Placeholders:</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <span class="badge bg-white text-dark border"><code>{{student_name}}</code></span>
+                    <span class="badge bg-white text-dark border"><code>{{parent_name}}</code></span>
+                    <span class="badge bg-white text-dark border"><code>{{school_name}}</code></span>
+                    <span class="badge bg-white text-dark border"><code>{{date}}</code></span>
+                    <span class="badge bg-white text-dark border"><code>{{time}}</code></span>
+                    <span class="badge bg-white text-dark border"><code>{{status}}</code></span>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <!-- Check-in Templates -->
+                <div class="col-md-6">
+                    <h6 class="fw-bold text-primary mb-3"><i class="ti ti-login"></i> Check-In Templates</h6>
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Email Subject</label>
+                        <input class="form-control" name="settings[attendance_email_subject_checkin]"
+                               value="<?= e($map['attendance_email_subject_checkin'] ?? 'EduCore Attendance Alert — {{student_name}}') ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Email Body</label>
+                        <textarea class="form-control" rows="5" name="settings[attendance_email_template_checkin]" style="font-size:13px;"><?= e($map['attendance_email_template_checkin'] ?? "Dear {{parent_name}},\n\nYour child, {{student_name}}, has checked into {{school_name}}.\n\nDate: {{date}}\nTime: {{time}}\nStatus: {{status}}\n\nThank you,\n{{school_name}}\nPowered by EduCore") ?></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">WhatsApp Message (Termii / Custom / Stub)</label>
+                        <textarea class="form-control" rows="4" name="settings[attendance_whatsapp_template_checkin]" style="font-size:13px;"><?= e($map['attendance_whatsapp_template_checkin'] ?? "EduCore Attendance Alert\nHello {{parent_name}}, your child {{student_name}} has checked into {{school_name}}.\nDate: {{date}}\nTime: {{time}}") ?></textarea>
+                    </div>
+                </div>
+
+                <!-- Check-out Templates -->
+                <div class="col-md-6">
+                    <h6 class="fw-bold text-success mb-3"><i class="ti ti-logout"></i> Check-Out Templates</h6>
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Email Subject</label>
+                        <input class="form-control" name="settings[attendance_email_subject_checkout]"
+                               value="<?= e($map['attendance_email_subject_checkout'] ?? 'EduCore Attendance Alert — {{student_name}}') ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Email Body</label>
+                        <textarea class="form-control" rows="5" name="settings[attendance_email_template_checkout]" style="font-size:13px;"><?= e($map['attendance_email_template_checkout'] ?? "Dear {{parent_name}},\n\nYour child, {{student_name}}, has left the school premises.\n\nDate: {{date}}\nTime: {{time}}\nStatus: Checked Out\n\nThank you,\n{{school_name}}\nPowered by EduCore") ?></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">WhatsApp Message (Termii / Custom / Stub)</label>
+                        <textarea class="form-control" rows="4" name="settings[attendance_whatsapp_template_checkout]" style="font-size:13px;"><?= e($map['attendance_whatsapp_template_checkout'] ?? "EduCore Attendance Alert\nHello {{parent_name}}, your child {{student_name}} has left {{school_name}}.\nDate: {{date}}\nTime: {{time}}") ?></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="sa-btn sa-btn-primary">
+            <i class="ti ti-device-floppy"></i> Save Attendance Notification Settings
+        </button>
+    </form>
+
+    <!-- Card 5: Diagnostic Live Testing Tools -->
+    <div class="sa-card" style="margin-top:24px;">
+        <div class="sa-card-title"><i class="ti ti-test-pipe"></i> Live Channel Diagnostic Testing</div>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">
+            Send test messages directly to verify email and WhatsApp credentials without touching real student attendance records.
+        </p>
+
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="p-3 border rounded-3 bg-light">
+                    <h6 class="fw-bold mb-2"><i class="ti ti-mail text-info"></i> Test Email Dispatch</h6>
+                    <form method="POST" action="<?= url('admin/attendance-settings/test-email') ?>">
+                        <?= csrf_field() ?>
+                        <div class="mb-2">
+                            <label class="form-label small">Parent / Test Email Address</label>
+                            <input type="email" class="form-control form-control-sm" name="test_email"
+                                   placeholder="parent@example.com" required>
+                        </div>
+                        <button type="submit" class="sa-btn btn-sm" style="background:#0284c7;color:#fff;">
+                            <i class="ti ti-send"></i> Send Test Email
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="p-3 border rounded-3 bg-light">
+                    <h6 class="fw-bold mb-2"><i class="ti ti-brand-whatsapp text-success"></i> Test WhatsApp Dispatch</h6>
+                    <form method="POST" action="<?= url('admin/attendance-settings/test-whatsapp') ?>">
+                        <?= csrf_field() ?>
+                        <div class="mb-2">
+                            <label class="form-label small">WhatsApp Phone Number</label>
+                            <input type="text" class="form-control form-control-sm" name="test_phone"
+                                   placeholder="e.g. 08012345678 or 234..." required>
+                        </div>
+                        <button type="submit" class="sa-btn btn-sm" style="background:#16a34a;color:#fff;">
+                            <i class="ti ti-brand-whatsapp"></i> Send Test WhatsApp
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -710,6 +1011,27 @@ if (gw && note) {
         };
         note.textContent = notes[gw.value] || '';
     });
+}
+
+// ── WhatsApp provider selector note ──────────────────────────────────────────
+const waProvider = document.getElementById('whatsappProviderSelect');
+const waNote = document.getElementById('whatsappProviderNote');
+const waMetaFields = document.getElementById('whatsappMetaFields');
+if (waProvider && waNote) {
+    const waNotes = {
+        meta: 'Meta Cloud API: Sends WhatsApp template messages via official WhatsApp Business Graph API.',
+        termii: 'Termii WhatsApp: Sends WhatsApp messages using Termii API key and sender ID.',
+        custom: 'Custom REST API: Dispatches JSON payload to your custom endpoint with Bearer authentication.',
+        stub: 'Stub Mode: WhatsApp messages are written to PHP error_log only. Ideal for development & testing.'
+    };
+    function updateWaNote() {
+        waNote.textContent = waNotes[waProvider.value] || '';
+        if (waMetaFields) {
+            waMetaFields.style.display = (waProvider.value === 'meta') ? 'flex' : 'none';
+        }
+    }
+    waProvider.addEventListener('change', updateWaNote);
+    updateWaNote();
 }
 
 // ── Status preview ────────────────────────────────────────────────────────────

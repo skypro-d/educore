@@ -1,6 +1,13 @@
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">Applications</h1>
-    <a class="btn btn-outline-primary" href="<?= url('admin/export') ?>">Export Excel/CSV</a>
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+    <div>
+        <h1 class="h3 mb-0"><?= ($filters['status'] === 'Enrolled') ? 'Enrolled Students' : 'Applications' ?></h1>
+        <p class="text-muted small mb-0"><?= ($filters['status'] === 'Enrolled') ? 'Manage all enrolled students, credentials, and digital ID cards.' : 'Review online admissions, schedule interviews, and process enrollments.' ?></p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-outline-primary btn-sm rounded-3 shadow-sm" href="<?= url('admin/export') ?>"><i class="ti ti-file-export me-1"></i> Export</a>
+        <a class="btn btn-outline-secondary btn-sm rounded-3 shadow-sm" href="<?= url('admin/students/sample-csv') ?>"><i class="ti ti-download me-1"></i> CSV Template</a>
+        <a class="btn btn-primary btn-sm rounded-3 shadow-sm" href="<?= url('admin/students/enrol') ?>"><i class="ti ti-user-plus me-1"></i> Direct Enrollment</a>
+    </div>
 </div>
 <form class="panel mb-4" method="get" action="<?= url('admin/applications') ?>">
     <div class="row g-3">
@@ -24,7 +31,12 @@
                     <td><?= e($row['parent_phone']) ?></td>
                     <td><span class="status <?= e(strtolower(str_replace(' ', '-', $row['status']))) ?>"><?= e($row['status']) ?></span></td>
                     <td><?= e($row['enrollment_status'] ?? 'Pending') ?></td>
-                    <td><a class="btn btn-sm btn-outline-primary" href="<?= url('admin/applications/' . $row['id']) ?>">View</a></td>
+                    <td>
+                        <div class="d-flex align-items-center gap-1">
+                            <a class="btn btn-sm btn-outline-primary px-2 py-1" href="<?= url('admin/applications/' . $row['id']) ?>">View</a>
+                            <a class="btn btn-sm btn-outline-secondary px-2 py-1" href="<?= url('admin/students/' . $row['id'] . '/edit') ?>" title="Edit Student Details"><i class="ti ti-edit"></i></a>
+                        </div>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

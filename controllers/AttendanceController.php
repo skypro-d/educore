@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/SmsService.php';
 require_once __DIR__ . '/../config/AttendanceRules.php';
 require_once __DIR__ . '/../models/Applicant.php';
 require_once __DIR__ . '/../models/ClassModel.php';
+require_once __DIR__ . '/../services/AttendanceService.php';
 
 final class AttendanceController
 {
@@ -92,7 +93,7 @@ final class AttendanceController
                     if ($date === date('Y-m-d')) {
                         $student = $this->fetchStudentForSms($applicantId);
                         if ($student) {
-                            send_checkin_sms($this->db, $student, $nowTime, $status, (int) $att['id']);
+                            AttendanceService::dispatchCheckinNotification($student, $nowTime, $status, (int) $att['id']);
                         }
                     }
                 } elseif ($status === 'Absent') {
@@ -235,7 +236,7 @@ final class AttendanceController
     private function fetchStudentForSms(int $applicantId): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, first_name, last_name, parent_phone, parent_email FROM applicants WHERE id = ?"
+            "SELECT a.*, c.name AS class_name FROM applicants a LEFT JOIN classes c ON c.id = a.class_id WHERE a.id = ?"
         );
         $stmt->execute([$applicantId]);
         $row = $stmt->fetch();

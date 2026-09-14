@@ -31,8 +31,9 @@
     <div class="nav-section">Main</div>
     <a class="nav-item <?= $current === 'dashboard' ? 'active' : '' ?>" href="<?= url('admin/dashboard') ?>"><i class="ti ti-layout-dashboard" data-fallback="D"></i> Dashboard</a>
     <a class="nav-item" href="<?= e(school_website_url()) ?>" target="_blank" rel="noopener noreferrer"><i class="ti ti-world" data-fallback="W"></i> View School Website</a>
-    <a class="nav-item <?= str_starts_with($current, 'applications') ? 'active' : '' ?>" href="<?= url('admin/applications') ?>"><i class="ti ti-forms" data-fallback="A"></i> Applications</a>
-    <a class="nav-item" href="<?= url('admin/applications?status=Enrolled') ?>"><i class="ti ti-user-check" data-fallback="E"></i> Enrolled students</a>
+    <a class="nav-item <?= str_starts_with($current, 'applications') && ($_GET['status'] ?? '') !== 'Enrolled' ? 'active' : '' ?>" href="<?= url('admin/applications') ?>"><i class="ti ti-forms" data-fallback="A"></i> Applications</a>
+    <a class="nav-item <?= ($current === 'applications' && ($_GET['status'] ?? '') === 'Enrolled') ? 'active' : '' ?>" href="<?= url('admin/applications?status=Enrolled') ?>"><i class="ti ti-user-check" data-fallback="E"></i> Enrolled students</a>
+    <a class="nav-item <?= str_starts_with($current, 'students') || $current === 'enrol-student' ? 'active' : '' ?>" href="<?= url('admin/students/enrol') ?>"><i class="ti ti-user-plus" data-fallback="+"></i> Direct Enrollment</a>
     <a class="nav-item <?= $current === 'interviews' ? 'active' : '' ?>" href="<?= url('admin/interviews') ?>"><i class="ti ti-calendar-event" data-fallback="I"></i> Interviews</a>
     
     <div class="nav-section">Academics &amp; Class</div>
@@ -41,6 +42,7 @@
     <a class="nav-item <?= $current === 'attendance' ? 'active' : '' ?>" href="<?= url('admin/attendance') ?>"><i class="ti ti-calendar-check" data-fallback="At"></i> Daily Attendance</a>
     <a class="nav-item <?= $current === 'attendance-report' ? 'active' : '' ?>" href="<?= url('admin/attendance-report') ?>"><i class="ti ti-file-analytics" data-fallback="Ar"></i> Attendance Report</a>
     <a class="nav-item <?= $current === 'attendance-settings' ? 'active' : '' ?>" href="<?= url('admin/attendance-settings') ?>"><i class="ti ti-settings-automation" data-fallback="As"></i> Attendance Settings</a>
+    <a class="nav-item <?= $current === 'attendance-notification-logs' ? 'active' : '' ?>" href="<?= url('admin/attendance-notification-logs') ?>"><i class="ti ti-bell-ringing" data-fallback="Nl"></i> Notification Logs</a>
     <a class="nav-item <?= $current === 'promotion' ? 'active' : '' ?>" href="<?= url('admin/promotion') ?>"><i class="ti ti-arrows-double-ne-sw" data-fallback="Pr"></i> Student Promotion</a>
 
     <div class="nav-section">Gate &amp; Exit Security</div>

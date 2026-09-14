@@ -11,6 +11,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/SmsService.php';
 require_once __DIR__ . '/../config/AttendanceRules.php';
+require_once __DIR__ . '/../services/AttendanceService.php';
 
 $route = trim($_GET['route'] ?? '', '/');
 $route = preg_replace('#^api/?#', '', $route);
@@ -325,14 +326,8 @@ switch ($route) {
         // Update telemetry values on device
         $db->prepare("UPDATE attendance_devices SET last_scan_time = NOW() WHERE id = ?")->execute([$device['id']]);
 
-        // Background Checkin SMS notice trigger
-        register_shutdown_function(function() use ($db, $student, $posTime, $resolvedStatus, $attId): void {
-            try {
-                send_checkin_sms($db, $student, $posTime, $resolvedStatus, $attId);
-            } catch (Throwable $e) {
-                error_log('[POS API] Background SMS notice failed: ' . $e->getMessage());
-            }
-        });
+        // Background Attendance Notification trigger (SMS, Email, WhatsApp)
+        AttendanceService::dispatchCheckinNotification($student, $posTime, $resolvedStatus, $attId);
 
         json_success([
             'attendance_status' => 'success',
@@ -430,21 +425,15 @@ switch ($route) {
         ]);
         $exitLogId = (int) $db->lastInsertId();
 
-        // Background Exit SMS trigger
-        register_shutdown_function(function() use ($db, $student, $exitType, $today, $nowTime, $reason, $pickupName, $exitLogId): void {
-            try {
-                $exitData = [
-                    'exit_type' => $exitType,
-                    'exit_date' => $today,
-                    'exit_time' => $nowTime,
-                    'exit_reason' => $reason,
-                    'pickup_person_name' => $pickupName
-                ];
-                send_exit_sms($db, $student, $exitData, $exitLogId);
-            } catch (Throwable $e) {
-                error_log('[POS API] Background Exit SMS failed: ' . $e->getMessage());
-            }
-        });
+        // Background Exit Notification trigger (SMS, Email, WhatsApp)
+        $exitData = [
+            'exit_type' => $exitType,
+            'exit_date' => $today,
+            'exit_time' => $nowTime,
+            'exit_reason' => $reason,
+            'pickup_person_name' => $pickupName
+        ];
+        AttendanceService::dispatchCheckoutNotification($student, $exitData, $exitLogId);
 
         json_success([
             'exit_status' => 'success',

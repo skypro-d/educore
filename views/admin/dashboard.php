@@ -26,17 +26,18 @@ $activityIcons = [
     <div class="sa-top-actions">
         <span class="badge-session" style="background:#16a34a;color:#fff;"><i class="ti ti-wifi"></i> Portal Live</span>
         <a class="sa-btn" href="<?= url('admin/settings') ?>"><i class="ti ti-settings"></i> Settings</a>
-        <a class="sa-btn sa-btn-primary" href="<?= url('admin/student-fees') ?>"><i class="ti ti-plus"></i> Record Payment</a>
+        <a class="sa-btn" href="<?= url('admin/student-fees') ?>"><i class="ti ti-plus"></i> Record Payment</a>
+        <a class="sa-btn sa-btn-primary" href="<?= url('admin/students/enrol') ?>"><i class="ti ti-user-plus"></i> Enrol Student</a>
     </div>
 </div>
 
 <!-- Consolidated Metrics -->
 <div class="sa-metrics" style="grid-template-columns: repeat(6, 1fr); gap: 15px; margin-bottom: 25px;">
-    <div class="sa-metric-card" style="padding: 15px;">
+    <a href="<?= url('admin/applications?status=Enrolled') ?>" class="sa-metric-card" style="padding: 15px; text-decoration:none; color:inherit; display:block;">
         <div class="label" style="font-size: 11px;"><i class="ti ti-users" style="color:#0b3d91;"></i> Total Students</div>
         <div class="value" style="font-size: 20px; font-weight: 800; margin-top: 5px;"><?= number_format($totalStudents) ?></div>
-        <div class="sub" style="font-size: 10px;">Active enrolled</div>
-    </div>
+        <div class="sub" style="font-size: 10px;">Active enrolled &bull; View all &rarr;</div>
+    </a>
     <div class="sa-metric-card" style="padding: 15px;">
         <div class="label" style="font-size: 11px;"><i class="ti ti-school" style="color:#16a34a;"></i> Staff Registry</div>
         <div class="value" style="font-size: 20px; font-weight: 800; margin-top: 5px;"><?= number_format($totalStaff) ?></div>
