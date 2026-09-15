@@ -73,6 +73,19 @@ final class StudentEnrollmentService
             throw new InvalidArgumentException('The selected class does not exist in the school system.');
         }
 
+        // Duplicate submission guard (prevents rapid double-click or simultaneous duplicate direct enrollments within 2 minutes)
+        $stmtDup = $this->db->prepare(
+            'SELECT id, admission_number FROM applicants 
+             WHERE first_name = ? AND last_name = ? AND parent_phone = ? AND class_id = ? 
+             AND created_at >= NOW() - INTERVAL 2 MINUTE 
+             ORDER BY id DESC LIMIT 1'
+        );
+        $stmtDup->execute([$firstName, $lastName, $parentPhone, $classId]);
+        $recentStudent = $stmtDup->fetch();
+        if ($recentStudent) {
+            throw new InvalidArgumentException("A student record for '{$firstName} {$lastName}' was already enrolled a moment ago (Admission No: {$recentStudent['admission_number']}). Please refresh the student list to avoid duplicate entries.");
+        }
+
         // 2. Resolve or generate Admission Number and Student Username
         $schoolInfo = SchoolContext::info();
         $schoolCode = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string) ($schoolInfo['school_code'] ?? 'SCH')));
@@ -106,8 +119,8 @@ final class StudentEnrollmentService
             $studentUsername = $this->generateStudentUsername($schoolCode, $year, $admissionNumber);
         }
 
-        // Generate application number
-        $applicationNumber = 'DIR-' . $year . '-' . strtoupper(bin2hex(random_bytes(3)));
+        // Generate application number using standard school numbering format (matches online admissions)
+        $applicationNumber = generate_application_number($this->db);
 
         // Passwords (use custom if provided, otherwise auto-generate secure temp password)
         $studentPass = trim((string) ($data['student_password'] ?? '')) ?: generate_temp_password();

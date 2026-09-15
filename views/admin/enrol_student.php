@@ -605,15 +605,21 @@ function printCredentialsSlip() {
     window.print();
 }
 
-// Bootstrap form validation
+// Bootstrap form validation & double-submission prevention
 (function () {
     'use strict';
     const form = document.getElementById('directEnrolForm');
+    const submitBtn = document.getElementById('btnSubmitEnrol');
     if (form) {
         form.addEventListener('submit', function (event) {
             if (!form.checkValidity()) {
                 event.preventDefault();
                 event.stopPropagation();
+            } else {
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Enrolling Student...';
+                }
             }
             form.classList.add('was-validated');
         }, false);

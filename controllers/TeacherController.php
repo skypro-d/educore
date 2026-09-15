@@ -168,6 +168,108 @@ final class TeacherController
         redirect('teacher/dashboard');
     }
 
+    public function resetRequest(): void
+    {
+        render('teacher/reset_request', ['pageTitle' => 'Forgot Password'], 'teacher_auth');
+    }
+
+    public function resetSend(): void
+    {
+        verify_csrf();
+        $identifier = trim((string) ($_POST['identifier'] ?? ''));
+
+        if ($identifier !== '') {
+            $stmt = $this->db->prepare(
+                "SELECT sa.id, sa.username, s.first_name, s.last_name, s.email
+                 FROM staff_accounts sa
+                 JOIN staff s ON s.id = sa.staff_id
+                 WHERE sa.username = ? OR s.email = ? OR s.staff_id = ?
+                 LIMIT 1"
+            );
+            $stmt->execute([$identifier, $identifier, $identifier]);
+            $account = $stmt->fetch();
+
+            if ($account && !empty($account['email']) && filter_var($account['email'], FILTER_VALIDATE_EMAIL)) {
+                $token = bin2hex(random_bytes(24));
+                $this->db->prepare("UPDATE staff_accounts SET reset_token = ?, reset_expires = DATE_ADD(NOW(), INTERVAL 30 MINUTE) WHERE id = ?")
+                    ->execute([$token, $account['id']]);
+
+                $schoolName = (string) setting('school_name', 'School Portal');
+                $resetLink = url('teacher/reset?token=' . $token);
+                $subject = "Staff Portal Password Reset - {$schoolName}";
+                $body = "Hello {$account['first_name']},\n\n"
+                    . "A request was received to reset the password for your Staff Portal account ({$account['username']}).\n\n"
+                    . "Please click the link below to set a new password:\n"
+                    . "{$resetLink}\n\n"
+                    . "This link will expire in 30 minutes. If you did not request this, you can safely ignore this email.\n\n"
+                    . "Regards,\n"
+                    . $schoolName;
+
+                send_email_notice($account['email'], $subject, $body);
+                StaffAudit::log('auth.password_reset_requested', 'staff_accounts', (int) $account['id'], "Password reset requested for staff {$account['username']}");
+            }
+        }
+
+        flash('success', 'If a matching staff account was found, password reset instructions have been sent to your registered email address.');
+        redirect('teacher/login');
+    }
+
+    public function resetForm(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        $stmt = $this->db->prepare("SELECT id, username FROM staff_accounts WHERE reset_token = ? AND reset_expires > NOW() LIMIT 1");
+        $stmt->execute([$token]);
+        $account = $stmt->fetch();
+
+        if (!$account) {
+            flash('danger', 'Invalid or expired password reset link. Please request a new link.');
+            redirect('teacher/login');
+        }
+
+        render('teacher/reset_form', compact('token', 'account'), 'teacher_auth');
+    }
+
+    public function resetSave(): void
+    {
+        verify_csrf();
+        $token = trim((string) ($_POST['token'] ?? ''));
+        $password = (string) ($_POST['password'] ?? '');
+        $confirm = (string) ($_POST['password_confirmation'] ?? '');
+
+        if ($token === '') {
+            flash('danger', 'Invalid password reset token.');
+            redirect('teacher/login');
+        }
+
+        if (strlen($password) < 6) {
+            flash('danger', 'Password must be at least 6 characters.');
+            redirect('teacher/reset?token=' . urlencode($token));
+        }
+
+        if ($password !== $confirm) {
+            flash('danger', 'Password confirmation does not match.');
+            redirect('teacher/reset?token=' . urlencode($token));
+        }
+
+        $stmt = $this->db->prepare("SELECT id, username FROM staff_accounts WHERE reset_token = ? AND reset_expires > NOW() LIMIT 1");
+        $stmt->execute([$token]);
+        $account = $stmt->fetch();
+
+        if (!$account) {
+            flash('danger', 'This password reset link is invalid or has expired. Please request a new one.');
+            redirect('teacher/login');
+        }
+
+        $hash = password_hash($password, PASSWORD_BCRYPT);
+        $this->db->prepare("UPDATE staff_accounts SET password_hash = ?, reset_token = NULL, reset_expires = NULL, must_change_password = 0 WHERE id = ?")
+            ->execute([$hash, $account['id']]);
+
+        StaffAudit::log('auth.password_reset_completed', 'staff_accounts', (int) $account['id'], "Staff reset password via link for {$account['username']}");
+
+        flash('success', 'Password reset successfully! You can now log in with your new password.');
+        redirect('teacher/login');
+    }
+
     /* ─── 2. Staff Dashboard ─────────────────────────────────────────────── */
 
     public function dashboard(): void

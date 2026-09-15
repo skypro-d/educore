@@ -12,9 +12,16 @@
             <?= csrf_field() ?>
             <input type="hidden" name="token" value="<?= e($token) ?>">
 
-            <div style="margin-bottom:20px;">
+            <div style="margin-bottom:16px;">
                 <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">New Password</label>
                 <input type="password" name="password" required minlength="6" placeholder="At least 6 characters" 
+                       style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;transition:border-color 0.2s;"
+                       onfocus="this.style.borderColor='#0b3d91';" onblur="this.style.borderColor='#cbd5e1';">
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Confirm New Password</label>
+                <input type="password" name="password_confirmation" required minlength="6" placeholder="Repeat new password" 
                        style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;outline:none;transition:border-color 0.2s;"
                        onfocus="this.style.borderColor='#0b3d91';" onblur="this.style.borderColor='#cbd5e1';">
             </div>

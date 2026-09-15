@@ -283,6 +283,21 @@ final class PublicController
                 'application/msword' => 'doc',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
             ];
+            // Duplicate submission guard (e.g. accidental double-click / touch bounce within 5 minutes)
+            $stmtDup = $this->db->prepare("SELECT id, application_number FROM applicants WHERE first_name = :fname AND last_name = :lname AND parent_phone = :phone AND class_id = :class_id AND created_at >= NOW() - INTERVAL 5 MINUTE ORDER BY id DESC LIMIT 1");
+            $stmtDup->execute([
+                ':fname' => trim($_POST['first_name']),
+                ':lname' => trim($_POST['last_name']),
+                ':phone' => trim($_POST['parent_phone']),
+                ':class_id' => (int) $_POST['class_id'],
+            ]);
+            $existingApp = $stmtDup->fetch();
+            if ($existingApp) {
+                flash('info', 'Your application is already registered with Application Number: ' . $existingApp['application_number'] . '. Please complete payment to finalize.');
+                redirect('payment/process.php?applicant_id=' . $existingApp['id']);
+                return;
+            }
+
             $applicationNumber = generate_application_number($this->db);
 
             $data = [

@@ -104,14 +104,32 @@ function generate_application_number(PDO $db): string
 {
     $year = date('Y');
     $schoolInfo = SchoolContext::info();
-    $schoolCode = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string) ($schoolInfo['school_code'] ?? 'GF')));
-    $schoolCode = substr($schoolCode !== '' ? $schoolCode : 'GF', 0, 6);
+    $schoolCode = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string) ($schoolInfo['school_code'] ?? 'SCH')));
+    $schoolCode = substr($schoolCode !== '' ? $schoolCode : 'SCH', 0, 6);
+    $schoolId = SchoolContext::id() ?: 1;
     
     $stmt = $db->prepare("SELECT COUNT(*) + 1 AS next_no FROM applicants WHERE school_id = ? AND YEAR(created_at) = ?");
-    $stmt->execute([SchoolContext::id(), $year]);
-    $nextNo = (int) $stmt->fetch()['next_no'];
+    $stmt->execute([$schoolId, $year]);
+    $row = $stmt->fetch();
+    $nextNo = (int) ($row['next_no'] ?? 1);
     
-    return $schoolCode . $year . str_pad((string) $nextNo, 5, '0', STR_PAD_LEFT);
+    $candidate = $schoolCode . $year . str_pad((string) $nextNo, 5, '0', STR_PAD_LEFT);
+
+    // Collision check
+    $stmtCheck = $db->prepare("SELECT id FROM applicants WHERE application_number = ? LIMIT 1");
+    $stmtCheck->execute([$candidate]);
+    if ($stmtCheck->fetch()) {
+        $stmtMax = $db->prepare("SELECT application_number FROM applicants WHERE application_number LIKE ? ORDER BY id DESC LIMIT 1");
+        $stmtMax->execute([$schoolCode . $year . '%']);
+        $maxRow = $stmtMax->fetch();
+        if ($maxRow && preg_match('/(\d{5})$/', (string)$maxRow['application_number'], $matches)) {
+            $candidate = $schoolCode . $year . str_pad((string) ((int)$matches[1] + 1), 5, '0', STR_PAD_LEFT);
+        } else {
+            $candidate = $schoolCode . $year . str_pad((string) ($nextNo + rand(1, 99)), 5, '0', STR_PAD_LEFT);
+        }
+    }
+    
+    return $candidate;
 }
 
 function upload_file(string $field, string $folder, array $allowed): ?string

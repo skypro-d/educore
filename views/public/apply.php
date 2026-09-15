@@ -291,7 +291,7 @@ $isFieldRequired = function($key, $default = 'optional') use ($getFieldStatus) {
 
             <div class="admission-actions">
                 <a class="btn btn-outline-secondary btn-lg" href="<?= url() ?>">Cancel</a>
-                <button class="btn btn-primary btn-lg" type="submit"><i class="ti ti-send me-1"></i> Submit Application</button>
+                <button class="btn btn-primary btn-lg" type="submit" id="btnSubmitApplication"><i class="ti ti-send me-1"></i> Submit Application</button>
             </div>
         </form>
         <?php endif; ?>
@@ -303,11 +303,27 @@ $isFieldRequired = function($key, $default = 'optional') use ($getFieldStatus) {
     const profiles = <?= json_encode($documentProfiles, JSON_UNESCAPED_SLASHES) ?>;
     const select = document.querySelector('[data-admission-type]');
     const target = document.querySelector('[data-document-profile]');
-    if (!select || !target) return;
-    
-    select.addEventListener('change', () => {
-        const docs = profiles[select.value] || profiles.General || [];
-        target.textContent = `Required for ${select.value}: ${docs.join(', ')}.`;
-    });
+    if (select && target) {
+        select.addEventListener('change', () => {
+            const docs = profiles[select.value] || profiles.General || [];
+            target.textContent = `Required for ${select.value}: ${docs.join(', ')}.`;
+        });
+    }
+
+    const form = document.querySelector('.admission-form');
+    const submitBtn = document.getElementById('btnSubmitApplication');
+    if (form && submitBtn) {
+        let isSubmitting = false;
+        form.addEventListener('submit', (e) => {
+            if (isSubmitting) {
+                e.preventDefault();
+                return false;
+            }
+            isSubmitting = true;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Processing Application...';
+            return true;
+        });
+    }
 })();
 </script>

@@ -106,14 +106,37 @@ final class ParentController
         verify_csrf();
         $token = trim($_POST['token'] ?? '');
         $password = (string) ($_POST['password'] ?? '');
+        $confirm = (string) ($_POST['password_confirmation'] ?? $password);
+
+        if ($token === '') {
+            flash('danger', 'Invalid reset token.');
+            redirect('parent/login');
+        }
+
         if (strlen($password) < 6) {
             flash('danger', 'Password must be at least 6 characters.');
-            redirect('parent/reset?token=' . $token);
+            redirect('parent/reset?token=' . urlencode($token));
         }
+
+        if ($password !== $confirm) {
+            flash('danger', 'Password confirmation does not match.');
+            redirect('parent/reset?token=' . urlencode($token));
+        }
+
+        $stmt = $this->db->prepare("SELECT id FROM parent_accounts WHERE reset_token = ? AND reset_expires > NOW() LIMIT 1");
+        $stmt->execute([$token]);
+        $account = $stmt->fetch();
+
+        if (!$account) {
+            flash('danger', 'This password reset link is invalid or has expired. Please request a new one.');
+            redirect('parent/login');
+        }
+
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        $this->db->prepare("UPDATE parent_accounts SET password_hash=?, reset_token=NULL, reset_expires=NULL WHERE reset_token=?")
-            ->execute([$hash, $token]);
-        flash('success', 'Password updated. Please login.');
+        $this->db->prepare("UPDATE parent_accounts SET password_hash = ?, reset_token = NULL, reset_expires = NULL, must_change_password = 0 WHERE id = ?")
+            ->execute([$hash, $account['id']]);
+
+        flash('success', 'Password updated successfully. You can now sign in with your new password.');
         redirect('parent/login');
     }
 

@@ -6,6 +6,20 @@ $route      = preg_replace('#^student/?#', '', $route);
 $controller = new StudentController();
 
 // Parameterized / POST routes
+if (preg_match('#^reset$#', $route)) {
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? $controller->resetSave()
+        : $controller->resetForm();
+    exit;
+}
+
+if (preg_match('#^reset-request$#', $route)) {
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? $controller->resetSend()
+        : $controller->resetRequest();
+    exit;
+}
+
 if (preg_match('#^change-password$#', $route)) {
     $_SERVER['REQUEST_METHOD'] === 'POST'
         ? $controller->changePasswordSave()
@@ -18,6 +32,16 @@ switch ($route) {
         $_SERVER['REQUEST_METHOD'] === 'POST'
             ? $controller->authenticate()
             : $controller->login();
+        break;
+    case 'reset-request':
+        $_SERVER['REQUEST_METHOD'] === 'POST'
+            ? $controller->resetSend()
+            : $controller->resetRequest();
+        break;
+    case 'reset':
+        $_SERVER['REQUEST_METHOD'] === 'POST'
+            ? $controller->resetSave()
+            : $controller->resetForm();
         break;
     case 'logout':
         $controller->logout();

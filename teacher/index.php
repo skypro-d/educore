@@ -35,6 +35,21 @@ if (preg_match('#^assignments/(\d+)/grade$#', $route, $m)) {
     exit;
 }
 
+// Password Reset
+if (preg_match('#^reset$#', $route)) {
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? $controller->resetSave()
+        : $controller->resetForm();
+    exit;
+}
+
+if (preg_match('#^reset-request$#', $route)) {
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? $controller->resetSend()
+        : $controller->resetRequest();
+    exit;
+}
+
 // Password Change
 if (preg_match('#^change-password$#', $route)) {
     $_SERVER['REQUEST_METHOD'] === 'POST'

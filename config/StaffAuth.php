@@ -183,21 +183,26 @@ final class StaffAuth
             }
         }
 
-        // Check session cached classes
-        if (isset($_SESSION['teacher']['assigned_classes']) && is_array($_SESSION['teacher']['assigned_classes'])) {
-            self::$cachedClasses = array_map('intval', $_SESSION['teacher']['assigned_classes']);
-            return self::$cachedClasses;
-        }
-
         try {
             $db = Database::connect();
             $year = current_academic_year();
             $stmt = $db->prepare(
-                "SELECT DISTINCT class_id FROM staff_class_assignments WHERE staff_id = ? AND academic_year = ?"
+                "SELECT DISTINCT class_id FROM staff_class_assignments 
+                 WHERE staff_id = ? AND (academic_year = ? OR academic_year = '' OR academic_year IS NULL)"
             );
             $stmt->execute([$staffId, $year]);
             $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            // Also merge any session classes if present for fallback
+            if (isset($_SESSION['teacher']['assigned_classes']) && is_array($_SESSION['teacher']['assigned_classes'])) {
+                $sessionIds = array_map('intval', $_SESSION['teacher']['assigned_classes']);
+                $ids = array_unique(array_merge($ids, $sessionIds));
+            }
+            
             self::$cachedClasses = array_map('intval', $ids);
+            if (isset($_SESSION['teacher'])) {
+                $_SESSION['teacher']['assigned_classes'] = self::$cachedClasses;
+            }
             return self::$cachedClasses;
         } catch (Throwable $e) {
             return [];
@@ -215,7 +220,38 @@ final class StaffAuth
         if (self::isSchoolAdmin()) {
             return true;
         }
-        return in_array($classId, self::assignedClassIds(), true);
+        if (in_array($classId, self::assignedClassIds(), true)) {
+            return true;
+        }
+
+        // Live database verification fallback to prevent stale cache lockout
+        $staffId = self::id();
+        if ($staffId > 0) {
+            try {
+                $db = Database::connect();
+                $year = current_academic_year();
+                $stmt = $db->prepare(
+                    "SELECT 1 FROM staff_class_assignments 
+                     WHERE staff_id = ? AND class_id = ? 
+                       AND (academic_year = ? OR academic_year = '' OR academic_year IS NULL) LIMIT 1"
+                );
+                $stmt->execute([$staffId, $classId, $year]);
+                if ((bool) $stmt->fetchColumn()) {
+                    if (!is_array(self::$cachedClasses)) {
+                        self::$cachedClasses = [];
+                    }
+                    if (!in_array($classId, self::$cachedClasses, true)) {
+                        self::$cachedClasses[] = $classId;
+                    }
+                    if (isset($_SESSION['teacher'])) {
+                        $_SESSION['teacher']['assigned_classes'] = self::$cachedClasses;
+                    }
+                    return true;
+                }
+            } catch (Throwable $e) {}
+        }
+
+        return false;
     }
 
     /**
@@ -257,7 +293,7 @@ final class StaffAuth
                 "SELECT 1 FROM staff_class_assignments 
                  WHERE staff_id = ? AND class_id = ? 
                    AND (subject_id = ? OR is_form_teacher = 1) 
-                   AND academic_year = ? LIMIT 1"
+                   AND (academic_year = ? OR academic_year = '' OR academic_year IS NULL) LIMIT 1"
             );
             $stmt->execute([$staffId, $classId, $subjectId, $year]);
             return (bool) $stmt->fetchColumn();

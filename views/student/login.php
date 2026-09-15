@@ -19,16 +19,20 @@
             <input class="form-control" type="text" name="username" id="username" required placeholder="e.g. SCH20260001" autofocus>
         </div>
         
-        <div class="mb-4">
-            <label class="form-label" for="password">Password</label>
-            <input class="form-control" type="password" name="password" id="password" required placeholder="••••••••">
+        <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <label class="form-label mb-0" for="password">Password</label>
+                <a href="<?= url('student/reset-request') ?>" style="font-size:12px;color:#0b3d91;text-decoration:none;font-weight:600;">Forgot password?</a>
+            </div>
+            <input class="form-control mt-1" type="password" name="password" id="password" required placeholder="••••••••">
         </div>
         
         <button type="submit" class="btn-auth">Access Portal</button>
     </form>
     
     <div class="auth-footer">
+        <p class="mb-1"><a href="<?= url('student/reset-request') ?>" style="color:#64748b;text-decoration:none;">Forgot your student password?</a></p>
         <p>Parent? <a href="<?= url('parent/login') ?>">Log in here</a></p>
-        <p style="margin-top:10px;font-size:11px;">&copy; <?= date('Y') ?> Bluefield School Admission. All rights reserved.</p>
+        <p style="margin-top:10px;font-size:11px;">&copy; <?= date('Y') ?> <?= e(setting('school_name', APP_NAME)) ?>. All rights reserved.</p>
     </div>
 </div>
