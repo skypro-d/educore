@@ -319,6 +319,35 @@ $documents = [
                 <form method="post" action="<?= url('admin/applications/' . $application['id'] . '/approve') ?>"><?= csrf_field() ?><button class="profile-btn profile-btn-primary" type="submit"><i class="ti ti-circle-check"></i> Approve</button></form>
                 <form method="post" action="<?= url('admin/applications/' . $application['id'] . '/reject') ?>"><?= csrf_field() ?><button class="profile-btn profile-btn-danger" type="submit"><i class="ti ti-x"></i> Reject</button></form>
             <?php endif; ?>
+            
+            <button type="button" class="profile-btn profile-btn-danger" data-bs-toggle="modal" data-bs-target="#deleteProfileModal">
+                <i class="ti ti-trash"></i> Delete Profile
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Confirm Delete Profile -->
+<div class="modal fade" id="deleteProfileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="ti ti-alert-triangle me-1"></i> Delete Student Profile</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="<?= url('admin/applications/' . $application['id'] . '/delete') ?>">
+                <?= csrf_field() ?>
+                <div class="modal-body p-4">
+                    <p class="mb-2 text-dark">Are you sure you want to permanently delete the profile for <strong><?= e($fullName) ?></strong> (<?= e($application['application_number']) ?>)?</p>
+                    <div class="alert alert-warning small mb-0">
+                        <i class="ti ti-info-circle me-1"></i> <strong>Warning:</strong> This will delete duplicate profile records, enrollment data, portal credentials, and associated academic records. This action cannot be undone.
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger btn-sm px-3 fw-bold"><i class="ti ti-trash me-1"></i> Delete Profile</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

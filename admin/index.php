@@ -16,6 +16,11 @@ if (preg_match('#^(?:applications|students)/(\d+)/edit$#', $route, $m)) {
         : $controller->editStudent((int) $m[1]);
     exit;
 }
+if (preg_match('#^(?:applications|students)/(\d+)/delete$#', $route, $m)) {
+    require_post();
+    $controller->deleteStudent((int) $m[1]);
+    exit;
+}
 if (preg_match('#^applications/(\d+)$#', $route, $m)) {
     $controller->showApplication((int) $m[1]);
     exit;

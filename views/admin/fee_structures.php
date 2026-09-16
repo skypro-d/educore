@@ -126,7 +126,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label" style="font-size:13px;font-weight:600;">Amount (NGN) <span style="color:#dc2626;">*</span></label>
-                        <input type="number" name="amount" required min="0" step="100" class="form-control form-control-sm" placeholder="50000">
+                        <input type="number" name="amount" required min="0.01" step="any" class="form-control form-control-sm" placeholder="50000">
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;" class="mb-3">
                         <div>

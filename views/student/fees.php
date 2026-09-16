@@ -1,19 +1,14 @@
-<div class="parent-topbar">
-    <div class="page-title"><i class="ti ti-wallet" style="margin-right:8px;color:#0b3d91;"></i>School Fees & Schedule</div>
-    <div class="topbar-actions">
-        <a href="<?= url('parent/payment-history') ?>" class="btn btn-outline-primary btn-sm px-3 fw-semibold">
+<div class="student-topbar">
+    <div class="page-title"><i class="ti ti-wallet" style="margin-right:8px;color:#0b3d91;"></i>Fee Schedule & Status</div>
+    <div>
+        <a href="<?= url('student/payment-history') ?>" class="btn btn-outline-primary btn-sm px-3 fw-semibold">
             <i class="ti ti-receipt me-1"></i> View Payment History
         </a>
-        <?php if ($outstanding > 0): ?>
-        <span style="padding:6px 14px;background:#fee2e2;color:#dc2626;border-radius:20px;font-size:12px;font-weight:700;"><i class="ti ti-alert-circle" style="margin-right:4px;"></i>NGN <?= number_format($outstanding) ?> Outstanding</span>
-        <?php else: ?>
-        <span style="padding:6px 14px;background:#f0fdf4;color:#16a34a;border-radius:20px;font-size:12px;font-weight:700;"><i class="ti ti-circle-check" style="margin-right:4px;"></i>All Fees Cleared</span>
-        <?php endif; ?>
     </div>
 </div>
 
-<div class="parent-content">
-    <!-- Student Header Summary Card -->
+<div class="student-content">
+    <!-- Student Fee Status Banner -->
     <div class="card border-0 shadow-sm rounded-4 p-4 mb-4" style="background: linear-gradient(135deg, #0b3d91 0%, #1e40af 100%); color: #fff;">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
             <div class="d-flex align-items-center gap-3">
@@ -38,13 +33,13 @@
         </div>
     </div>
 
-    <!-- Term Fee Schedule Breakdown -->
+    <!-- Fee Items Table -->
     <div style="background:#fff;border-radius:14px;border:1px solid #e8eef4;overflow:hidden;" class="shadow-sm mb-4">
         <div style="padding:16px 20px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between;">
             <div style="font-weight:700;color:#1a2535;font-size:15px;">
-                <i class="ti ti-list-details me-1 text-primary"></i> Applicable Fee Items for <?= e($student['class_name'] ?: 'Current Class') ?>
+                <i class="ti ti-list-details me-1 text-primary"></i> Applicable Class Fees (<?= e($student['class_name'] ?: 'Current Class') ?>)
             </div>
-            <span class="badge bg-light text-muted border"><?= count($feeSchedule) ?> Fee Items</span>
+            <span class="badge bg-light text-muted border"><?= count($feeSchedule) ?> Fee Item<?= count($feeSchedule) === 1 ? '' : 's' ?></span>
         </div>
 
         <?php if (!empty($feeSchedule)): ?>
@@ -64,14 +59,10 @@
                 </thead>
                 <tbody>
                     <?php 
-                    $totalScheduled = 0;
-                    $totalPaid = 0;
                     foreach ($feeSchedule as $fee): 
-                        $totalScheduled += (float) $fee['amount'];
                         $paidAmt = (float) ($fee['amount_paid'] ?? 0);
                         $balAmt = isset($fee['balance']) ? (float)$fee['balance'] : (float)$fee['amount'];
                         $status = $fee['payment_status'] ?? ($paidAmt >= (float)$fee['amount'] && (float)$fee['amount'] > 0 ? 'Paid' : ($paidAmt > 0 ? 'Partial' : 'Unpaid'));
-                        $totalPaid += $paidAmt;
                     ?>
                     <tr>
                         <td class="ps-4">
@@ -98,7 +89,7 @@
                         </td>
                         <td class="text-center pe-4">
                             <?php if (!empty($fee['payment_id'])): ?>
-                                <a href="<?= url('parent/receipt?id=' . $fee['payment_id']) ?>" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 11.5px;" title="Print Official Receipt">
+                                <a href="<?= url('student/receipt?id=' . $fee['payment_id']) ?>" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 11.5px;">
                                     <i class="ti ti-download me-1"></i> Receipt
                                 </a>
                             <?php else: ?>
@@ -113,20 +104,19 @@
         <?php else: ?>
         <div style="text-align:center;padding:48px;color:#9ca3af;">
             <i class="ti ti-receipt-off" style="font-size:44px;display:block;margin-bottom:12px;opacity:0.6;"></i>
-            <div class="fw-semibold">No active fee schedule configured for this class yet.</div>
-            <div class="small text-muted mt-1">Check back soon or contact the school finance department.</div>
+            <div class="fw-semibold">No active fee schedule configured for your class yet.</div>
         </div>
         <?php endif; ?>
     </div>
 
     <!-- Quick Navigation to Payment History -->
-    <div class="card border-0 shadow-sm rounded-4 p-4" style="background:#fff;">
+    <div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
             <div>
-                <h6 class="fw-bold mb-1 text-dark"><i class="ti ti-history me-1 text-primary"></i> Looking for past payment receipts?</h6>
-                <p class="text-muted small mb-0">View your full chronological payment history, bank transfers, cash receipts, and download official stamped receipts.</p>
+                <h6 class="fw-bold mb-1 text-dark"><i class="ti ti-history me-1 text-primary"></i> Need payment records & official receipts?</h6>
+                <p class="text-muted small mb-0">View all past recorded transactions and download computer-generated payment receipts.</p>
             </div>
-            <a href="<?= url('parent/payment-history') ?>" class="btn btn-primary btn-sm px-4 py-2 fw-semibold rounded-3 shadow-sm" style="background:#0b3d91; border-color:#0b3d91;">
+            <a href="<?= url('student/payment-history') ?>" class="btn btn-primary btn-sm px-4 py-2 fw-semibold rounded-3 shadow-sm" style="background:#0b3d91; border-color:#0b3d91;">
                 <i class="ti ti-receipt me-1"></i> Open Payment History &rarr;
             </a>
         </div>

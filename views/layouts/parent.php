@@ -81,8 +81,12 @@
     </style>
 </head>
 <body>
-<?php $parentSession = $_SESSION['parent'] ?? null; ?>
-<?php $currentRoute  = trim($_GET['route'] ?? 'dashboard', '/'); ?>
+<?php 
+$parentSession = $_SESSION['parent'] ?? null; 
+$currentRoute  = trim($_GET['route'] ?? 'dashboard', '/'); 
+$allChildren   = $parentSession ? parent_linked_children() : [];
+$activeChildId = (int) ($parentSession['applicant_id'] ?? 0);
+?>
 
 <div class="parent-shell">
 <?php if ($parentSession): ?>
@@ -100,10 +104,40 @@
             <div class="portal-label">Parent Portal</div>
         </div>
     </div>
+
+    <?php if (count($allChildren) > 1): ?>
+    <!-- Multi-Child Switcher in Sidebar -->
+    <div style="padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+        <label style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.8px; display: block; margin-bottom: 6px;">Active Child</label>
+        <div class="dropdown">
+            <button class="btn btn-sm w-100 text-start d-flex align-items-center justify-content-between" type="button" data-bs-toggle="dropdown" style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; font-size: 12.5px; padding: 6px 10px;">
+                <span class="text-truncate me-1"><i class="ti ti-user me-1 text-warning"></i><?= e($parentSession['name']) ?></span>
+                <i class="ti ti-chevron-down" style="font-size: 14px;"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark shadow w-100" style="font-size: 12.5px; border-radius: 8px; background: #0f2757; border: 1px solid rgba(255,255,255,0.1);">
+                <li class="dropdown-header text-uppercase" style="font-size: 10px; color: rgba(255,255,255,0.5);">Switch Student</li>
+                <?php foreach ($allChildren as $child): ?>
+                    <li>
+                        <a class="dropdown-item py-2 d-flex align-items-center justify-content-between <?= (int)$child['id'] === $activeChildId ? 'active bg-primary' : '' ?>" href="<?= url('parent/switch-child?id=' . $child['id']) ?>">
+                            <div>
+                                <div class="fw-bold"><?= e($child['first_name'] . ' ' . $child['last_name']) ?></div>
+                                <div style="font-size: 11px; opacity: 0.75;"><?= e($child['class_name'] ?: 'Enrolled') ?> &bull; <?= e($child['admission_number'] ?: $child['application_number']) ?></div>
+                            </div>
+                            <?php if ((int)$child['id'] === $activeChildId): ?>
+                                <i class="ti ti-check text-warning ms-2"></i>
+                            <?php endif; ?>
+                        </a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <nav class="parent-nav">
         <div class="nav-label">Overview</div>
         <a class="<?= $currentRoute === 'dashboard' ? 'active' : '' ?>" href="<?= url('parent/dashboard') ?>"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
-        <a class="<?= $currentRoute === 'child' ? 'active' : '' ?>" href="<?= url('parent/child') ?>"><i class="ti ti-user"></i> Child Profile</a>
+        <a class="<?= $currentRoute === 'child' ? 'active' : '' ?>" href="<?= url('parent/child') ?>"><i class="ti ti-user"></i> Child Profile <?= count($allChildren) > 1 ? '<span class="badge bg-warning text-dark ms-auto" style="font-size:10px;">'.count($allChildren).'</span>' : '' ?></a>
         <div class="nav-label">Academics</div>
         <a class="<?= $currentRoute === 'results' ? 'active' : '' ?>" href="<?= url('parent/results') ?>"><i class="ti ti-report-analytics"></i> Results</a>
         <a class="<?= $currentRoute === 'attendance' ? 'active' : '' ?>" href="<?= url('parent/attendance') ?>"><i class="ti ti-calendar-check"></i> Attendance</a>
@@ -111,7 +145,8 @@
         <a class="<?= $currentRoute === 'id-card' ? 'active' : '' ?>" href="<?= url('parent/id-card') ?>"><i class="ti ti-id"></i> Child ID Card</a>
         
         <div class="nav-label">Finance</div>
-        <a class="<?= $currentRoute === 'fees' ? 'active' : '' ?>" href="<?= url('parent/fees') ?>"><i class="ti ti-receipt"></i> School Fees</a>
+        <a class="<?= $currentRoute === 'fees' ? 'active' : '' ?>" href="<?= url('parent/fees') ?>"><i class="ti ti-wallet"></i> School Fees</a>
+        <a class="<?= $currentRoute === 'payment-history' ? 'active' : '' ?>" href="<?= url('parent/payment-history') ?>"><i class="ti ti-receipt"></i> Payment History</a>
         
         <div class="nav-label">Communication</div>
         <a class="<?= $currentRoute === 'notifications' ? 'active' : '' ?>" href="<?= url('parent/notifications') ?>"><i class="ti ti-bell"></i> Notifications</a>
@@ -131,6 +166,36 @@
         <button class="parent-menu-toggle" id="parentMenuToggle" type="button"><i class="ti ti-menu-2"></i></button>
         <span style="color:#fff;font-weight:600;font-size:14px"><?= e(setting('school_name', 'Parent Portal')) ?></span>
         <a href="<?= url('parent/logout') ?>" style="color:rgba(255,255,255,.7);font-size:13px">Logout</a>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($parentSession && count($allChildren) > 1): ?>
+    <div class="bg-white border-bottom px-4 py-2 d-none d-md-flex align-items-center justify-content-between" style="font-size: 13px;">
+        <div class="d-flex align-items-center gap-2 text-muted">
+            <i class="ti ti-users text-primary"></i>
+            <span>Viewing Student: <strong class="text-dark"><?= e($parentSession['name']) ?></strong> (<?= e($parentSession['app_number']) ?>)</span>
+        </div>
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-primary dropdown-toggle py-1 px-3 fw-semibold rounded-pill" type="button" data-bs-toggle="dropdown" style="font-size: 12px;">
+                <i class="ti ti-switch-horizontal me-1"></i> Switch Child (<?= count($allChildren) ?>)
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="font-size: 12.5px; border-radius: 10px;">
+                <li class="dropdown-header text-uppercase" style="font-size: 10px;">Select Child Profile</li>
+                <?php foreach ($allChildren as $child): ?>
+                    <li>
+                        <a class="dropdown-item py-2 d-flex align-items-center justify-content-between <?= (int)$child['id'] === $activeChildId ? 'active' : '' ?>" href="<?= url('parent/switch-child?id=' . $child['id']) ?>">
+                            <div>
+                                <div class="fw-bold"><?= e($child['first_name'] . ' ' . $child['last_name']) ?></div>
+                                <div class="small opacity-75"><?= e($child['class_name'] ?: 'Enrolled') ?> &bull; <?= e($child['admission_number'] ?: $child['application_number']) ?></div>
+                            </div>
+                            <?php if ((int)$child['id'] === $activeChildId): ?>
+                                <i class="ti ti-check ms-3"></i>
+                            <?php endif; ?>
+                        </a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
     </div>
     <?php endif; ?>
 

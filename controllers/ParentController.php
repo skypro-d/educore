@@ -24,16 +24,16 @@ final class ParentController
     public function authenticate(): void
     {
         verify_csrf();
-        $email = trim($_POST['email'] ?? '');
+        $identifier = trim($_POST['email'] ?? ($_POST['identifier'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');
 
         $stmt = $this->db->prepare(
-            "SELECT pa.*, a.first_name, a.last_name, a.application_number, a.status
+            "SELECT pa.*, a.first_name, a.last_name, a.application_number, a.admission_number, a.status
              FROM parent_accounts pa
              JOIN applicants a ON a.id = pa.applicant_id
-             WHERE pa.email = ? LIMIT 1"
+             WHERE pa.email = ? OR pa.phone = ? LIMIT 1"
          );
-        $stmt->execute([$email]);
+        $stmt->execute([$identifier, $identifier]);
         $account = $stmt->fetch();
 
         if ($account && password_verify($password, $account['password_hash'])) {
@@ -43,19 +43,20 @@ final class ParentController
                 'applicant_id'   => $account['applicant_id'],
                 'name'           => $account['first_name'] . ' ' . $account['last_name'],
                 'email'          => $account['email'],
-                'app_number'     => $account['application_number'],
+                'phone'          => $account['phone'] ?? '',
+                'app_number'     => $account['admission_number'] ?: $account['application_number'],
             ];
             $this->db->prepare("UPDATE parent_accounts SET last_login=NOW() WHERE id=?")->execute([$account['id']]);
             
-            Logger::info("Parent login successful", ['email' => $email, 'account_id' => $account['id']]);
+            Logger::info("Parent login successful", ['identifier' => $identifier, 'account_id' => $account['id']]);
             if ($account['must_change_password']) {
                 redirect('parent/change-password');
             }
             redirect('parent/dashboard');
         }
 
-        Logger::warn("Parent login failed", ['email' => $email]);
-        flash('danger', 'Invalid email or password.');
+        Logger::warn("Parent login failed", ['identifier' => $identifier]);
+        flash('danger', 'Invalid email, phone, or password.');
         redirect('parent/login');
     }
 
@@ -226,17 +227,46 @@ final class ParentController
         $stmtTodayExit->execute([$applicantId, $today]);
         $todayExit = $stmtTodayExit->fetch() ?: null;
 
+        $children = parent_linked_children();
+
         render('parent/dashboard', compact(
-            'student', 'announcements', 'attendance', 'feeBalance', 'results',
+            'student', 'children', 'announcements', 'attendance', 'feeBalance', 'results',
             'calendar', 'timetableToday', 'notifications', 'todayAttendance', 'todayExit'
         ), 'parent');
+    }
+
+    public function switchChild(): void
+    {
+        $this->requireParent();
+        $childId = (int) ($_GET['id'] ?? 0);
+        $children = parent_linked_children();
+        $found = null;
+        foreach ($children as $c) {
+            if ((int) $c['id'] === $childId) {
+                $found = $c;
+                break;
+            }
+        }
+
+        if ($found) {
+            $_SESSION['parent']['applicant_id'] = (int) $found['id'];
+            $_SESSION['parent']['name'] = trim($found['first_name'] . ' ' . $found['last_name']);
+            $_SESSION['parent']['app_number'] = $found['admission_number'] ?: $found['application_number'];
+            flash('success', "Active student switched to {$found['first_name']} {$found['last_name']}.");
+        } else {
+            flash('danger', 'Student not found or not linked to your parent profile.');
+        }
+
+        $ref = $_SERVER['HTTP_REFERER'] ?? url('parent/dashboard');
+        redirect($ref);
     }
 
     public function child(): void
     {
         $this->requireParent();
         $student = (new Applicant($this->db))->find((int) $_SESSION['parent']['applicant_id']);
-        render('parent/child', compact('student'), 'parent');
+        $children = parent_linked_children();
+        render('parent/child', compact('student', 'children'), 'parent');
     }
 
     public function attendance(): void
@@ -319,23 +349,92 @@ final class ParentController
     {
         $this->requireParent();
         $applicantId = (int) $_SESSION['parent']['applicant_id'];
-        $year = $_GET['year'] ?? setting('academic_year', '');
+        $student = (new Applicant($this->db))->find($applicantId);
+        $classId = (int) ($student['class_id'] ?? 0);
+        $year = $_GET['year'] ?? setting('academic_year', date('Y') . '/' . (date('Y') + 1));
+        $term = $_GET['term'] ?? setting('current_term', 'First');
 
-        $stmt = $this->db->prepare(
-            "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year
-             FROM student_fee_payments sfp
-             JOIN fee_structures fs ON fs.id=sfp.fee_structure_id
-             WHERE sfp.applicant_id=? AND fs.academic_year=?
-             ORDER BY sfp.created_at DESC"
+        // Fetch applicable fee structures for this student's class and active session
+        $stmtFs = $this->db->prepare(
+            "SELECT fs.*, c.name AS class_name,
+                    sfp.id AS payment_id, sfp.amount_paid, sfp.balance, sfp.payment_status, sfp.receipt_number, sfp.payment_date, sfp.payment_method
+             FROM fee_structures fs
+             LEFT JOIN classes c ON c.id = fs.class_id
+             LEFT JOIN student_fee_payments sfp ON sfp.fee_structure_id = fs.id AND sfp.applicant_id = ?
+             WHERE fs.is_active = 1 
+               AND (fs.class_id IS NULL OR fs.class_id = 0 OR fs.class_id = ?)
+             ORDER BY fs.term ASC, fs.fee_name ASC"
         );
-        $stmt->execute([$applicantId, $year]);
+        $stmtFs->execute([$applicantId, $classId]);
+        $feeSchedule = $stmtFs->fetchAll();
+
+        // Outstanding balance
+        $outstanding = $this->outstandingBalance($applicantId);
+
+        render('parent/fees', compact('feeSchedule', 'outstanding', 'student', 'year', 'term'), 'parent');
+    }
+
+    public function paymentHistory(): void
+    {
+        $this->requireParent();
+        $applicantId = (int) $_SESSION['parent']['applicant_id'];
+        $year = $_GET['year'] ?? '';
+
+        $sql = "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year
+                FROM student_fee_payments sfp
+                JOIN fee_structures fs ON fs.id = sfp.fee_structure_id
+                WHERE sfp.applicant_id = ?";
+        $params = [$applicantId];
+        if ($year !== '') {
+            $sql .= " AND fs.academic_year = ?";
+            $params[] = $year;
+        }
+        $sql .= " ORDER BY sfp.created_at DESC, sfp.id DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         $payments = $stmt->fetchAll();
 
-        // Outstanding
         $outstanding = $this->outstandingBalance($applicantId);
         $student = (new Applicant($this->db))->find($applicantId);
 
-        render('parent/fees', compact('payments', 'outstanding', 'student', 'year'), 'parent');
+        render('parent/payment_history', compact('payments', 'outstanding', 'student', 'year'), 'parent');
+    }
+
+    public function receipt(): void
+    {
+        $this->requireParent();
+        $paymentId = (int) ($_GET['id'] ?? ($_GET['receipt'] ?? 0));
+        $children = parent_linked_children();
+        $allowedApplicantIds = array_map(fn($c) => (int) $c['id'], $children);
+
+        if (empty($allowedApplicantIds)) {
+            flash('danger', 'No student records found.');
+            redirect('parent/fees');
+        }
+
+        $inClause = implode(',', array_fill(0, count($allowedApplicantIds), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year,
+                    a.first_name, a.last_name, a.application_number, a.admission_number, a.parent_name, a.guardian_name,
+                    c.name AS class_name
+             FROM student_fee_payments sfp
+             JOIN fee_structures fs ON fs.id = sfp.fee_structure_id
+             JOIN applicants a ON a.id = sfp.applicant_id
+             LEFT JOIN classes c ON c.id = a.class_id
+             WHERE sfp.id = ? AND sfp.applicant_id IN ($inClause) LIMIT 1"
+        );
+        $params = array_merge([$paymentId], $allowedApplicantIds);
+        $stmt->execute($params);
+        $payment = $stmt->fetch();
+
+        if (!$payment) {
+            flash('danger', 'Receipt not found or you do not have permission to view it.');
+            redirect('parent/payment-history');
+        }
+
+        $backUrl = url('parent/payment-history');
+        render('shared/fee_receipt', compact('payment', 'backUrl'), 'none');
     }
 
     public function announcements(): void

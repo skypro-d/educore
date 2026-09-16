@@ -456,6 +456,58 @@ final class AdminController
         redirect('admin/applications/' . $id);
     }
 
+    public function deleteStudent(int $id): void
+    {
+        require_permission('applications');
+        verify_csrf();
+
+        $applicant = (new Applicant($this->db))->find($id);
+        if (!$applicant) {
+            flash('danger', 'Student profile not found.');
+            redirect('admin/applications');
+        }
+
+        $studentName = trim(($applicant['first_name'] ?? '') . ' ' . ($applicant['last_name'] ?? ''));
+        $appNo = $applicant['admission_number'] ?: $applicant['application_number'];
+
+        $this->db->beginTransaction();
+        try {
+            // Remove uploaded files if present
+            $files = [
+                $applicant['passport_photo'] ?? null,
+                $applicant['birth_certificate'] ?? null,
+                $applicant['previous_result'] ?? null,
+                $applicant['testimonial'] ?? null,
+                $applicant['recommendation_letter'] ?? null,
+            ];
+            foreach ($files as $f) {
+                if (!empty($f) && file_exists(__DIR__ . '/../uploads/' . $f)) {
+                    @unlink(__DIR__ . '/../uploads/' . $f);
+                }
+            }
+
+            // Remove applicant (cascades related DB rows)
+            $stmt = $this->db->prepare("DELETE FROM applicants WHERE id = ?");
+            $stmt->execute([$id]);
+
+            $this->db->commit();
+
+            try {
+                (new ActivityLog($this->db))->record('student_deleted', "Deleted duplicate / unwanted student profile {$appNo} ({$studentName})");
+            } catch (Throwable) {}
+
+            flash('success', "Student profile for <strong>{$studentName}</strong> ({$appNo}) has been permanently deleted.");
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            Logger::error("Failed to delete student profile {$id}: " . $e->getMessage());
+            flash('danger', 'Failed to delete student profile: ' . $e->getMessage());
+        }
+
+        redirect('admin/applications');
+    }
+
     public function updateStatus(int $id, string $status): void
     {
         require_admin();
@@ -1193,10 +1245,19 @@ final class AdminController
                     $notes
                 ]);
 
+                $newPaymentId = (int) $this->db->lastInsertId();
+
                 // Create Parent Portal Account if it doesn't exist
                 $this->autoCreateParentAccount($applicantId);
 
-                flash('success', 'Manual payment recorded successfully.');
+                // Send email receipt to parent
+                try {
+                    (new NotificationController($this->db))->sendFeePaymentReceipt($applicantId, $newPaymentId);
+                } catch (Throwable $e) {
+                    Logger::error('Failed to send fee payment receipt email: ' . $e->getMessage());
+                }
+
+                flash('success', 'Manual payment recorded successfully and receipt notification sent to parent.');
             } else {
                 flash('danger', 'Invalid student or fee item.');
             }
@@ -1278,8 +1339,16 @@ final class AdminController
                  SET amount_paid=?, balance=?, payment_status=?, payment_method=?, notes=CONCAT(COALESCE(notes,''), '\n', ?), payment_date=NOW()
                  WHERE id=?"
             );
-            $upd->execute([$newPaid, $newBalance, $newStatus, $method, "Recorded â‚¦" . number_format($amountPaid) . " via $method. Notes: $notes", $paymentId]);
-            flash('success', 'Balance payment applied.');
+            $upd->execute([$newPaid, $newBalance, $newStatus, $method, "Recorded ₦" . number_format($amountPaid, 2) . " via $method. Notes: $notes", $paymentId]);
+
+            // Send Email Receipt for balance payment
+            try {
+                (new NotificationController($this->db))->sendFeePaymentReceipt((int) $payment['applicant_id'], $paymentId);
+            } catch (Throwable $e) {
+                Logger::error('Failed to send fee payment receipt email: ' . $e->getMessage());
+            }
+
+            flash('success', 'Balance payment applied and receipt notification sent to parent.');
         } else {
             flash('danger', 'Payment record not found.');
         }

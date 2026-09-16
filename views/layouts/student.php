@@ -104,6 +104,10 @@
         <a class="<?= $currentRoute === 'dashboard' ? 'active' : '' ?>" href="<?= url('student/dashboard') ?>"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
         <a class="<?= $currentRoute === 'timetable' ? 'active' : '' ?>" href="<?= url('student/timetable') ?>"><i class="ti ti-calendar"></i> Class Timetable</a>
         <a class="<?= $currentRoute === 'id-card' ? 'active' : '' ?>" href="<?= url('student/id-card') ?>"><i class="ti ti-id"></i> Student ID Card</a>
+
+        <div class="nav-label">Finance</div>
+        <a class="<?= $currentRoute === 'fees' || $currentRoute === 'fee-schedule' ? 'active' : '' ?>" href="<?= url('student/fees') ?>"><i class="ti ti-wallet"></i> Fee Schedule</a>
+        <a class="<?= $currentRoute === 'payment-history' ? 'active' : '' ?>" href="<?= url('student/payment-history') ?>"><i class="ti ti-receipt"></i> Payment History</a>
         
         <div class="nav-label">Alerts</div>
         <a class="<?= $currentRoute === 'notifications' ? 'active' : '' ?>" href="<?= url('student/notifications') ?>"><i class="ti ti-bell"></i> Notifications</a>

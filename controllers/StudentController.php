@@ -328,6 +328,88 @@ final class StudentController
         render('student/notifications', compact('notifications'), 'student');
     }
 
+    public function fees(): void
+    {
+        $this->requireStudent();
+        $applicantId = (int) $_SESSION['student']['applicant_id'];
+        $student = (new Applicant($this->db))->find($applicantId);
+        $classId = (int) ($student['class_id'] ?? 0);
+        $year = $_GET['year'] ?? setting('academic_year', date('Y') . '/' . (date('Y') + 1));
+        $term = $_GET['term'] ?? setting('current_term', 'First');
+
+        $stmtFs = $this->db->prepare(
+            "SELECT fs.*, c.name AS class_name,
+                    sfp.id AS payment_id, sfp.amount_paid, sfp.balance, sfp.payment_status, sfp.receipt_number, sfp.payment_date, sfp.payment_method
+             FROM fee_structures fs
+             LEFT JOIN classes c ON c.id = fs.class_id
+             LEFT JOIN student_fee_payments sfp ON sfp.fee_structure_id = fs.id AND sfp.applicant_id = ?
+             WHERE fs.is_active = 1 
+               AND (fs.class_id IS NULL OR fs.class_id = 0 OR fs.class_id = ?)
+             ORDER BY fs.term ASC, fs.fee_name ASC"
+        );
+        $stmtFs->execute([$applicantId, $classId]);
+        $feeSchedule = $stmtFs->fetchAll();
+
+        $outstanding = $this->outstandingBalance($applicantId);
+
+        render('student/fees', compact('feeSchedule', 'outstanding', 'student', 'year', 'term'), 'student');
+    }
+
+    public function paymentHistory(): void
+    {
+        $this->requireStudent();
+        $applicantId = (int) $_SESSION['student']['applicant_id'];
+        $year = $_GET['year'] ?? '';
+
+        $sql = "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year
+                FROM student_fee_payments sfp
+                JOIN fee_structures fs ON fs.id = sfp.fee_structure_id
+                WHERE sfp.applicant_id = ?";
+        $params = [$applicantId];
+        if ($year !== '') {
+            $sql .= " AND fs.academic_year = ?";
+            $params[] = $year;
+        }
+        $sql .= " ORDER BY sfp.created_at DESC, sfp.id DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $payments = $stmt->fetchAll();
+
+        $outstanding = $this->outstandingBalance($applicantId);
+        $student = (new Applicant($this->db))->find($applicantId);
+
+        render('student/payment_history', compact('payments', 'outstanding', 'student', 'year'), 'student');
+    }
+
+    public function receipt(): void
+    {
+        $this->requireStudent();
+        $applicantId = (int) $_SESSION['student']['applicant_id'];
+        $paymentId = (int) ($_GET['id'] ?? ($_GET['receipt'] ?? 0));
+
+        $stmt = $this->db->prepare(
+            "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year,
+                    a.first_name, a.last_name, a.application_number, a.admission_number, a.parent_name, a.guardian_name,
+                    c.name AS class_name
+             FROM student_fee_payments sfp
+             JOIN fee_structures fs ON fs.id = sfp.fee_structure_id
+             JOIN applicants a ON a.id = sfp.applicant_id
+             LEFT JOIN classes c ON c.id = a.class_id
+             WHERE sfp.id = ? AND sfp.applicant_id = ? LIMIT 1"
+        );
+        $stmt->execute([$paymentId, $applicantId]);
+        $payment = $stmt->fetch();
+
+        if (!$payment) {
+            flash('danger', 'Receipt not found or you do not have permission to view it.');
+            redirect('student/payment-history');
+        }
+
+        $backUrl = url('student/payment-history');
+        render('shared/fee_receipt', compact('payment', 'backUrl'), 'none');
+    }
+
     /* ─── Helpers ────────────────────────────────────────── */
 
     private function requireStudent(bool $checkPasswordForce = true): void

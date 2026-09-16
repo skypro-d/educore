@@ -35,6 +35,9 @@
                         <div class="d-flex align-items-center gap-1">
                             <a class="btn btn-sm btn-outline-primary px-2 py-1" href="<?= url('admin/applications/' . $row['id']) ?>">View</a>
                             <a class="btn btn-sm btn-outline-secondary px-2 py-1" href="<?= url('admin/students/' . $row['id'] . '/edit') ?>" title="Edit Student Details"><i class="ti ti-edit"></i></a>
+                            <button type="button" class="btn btn-sm btn-outline-danger px-2 py-1" title="Delete Profile / Duplicate" onclick="confirmDeleteStudent(<?= $row['id'] ?>, '<?= e(addslashes($row['first_name'] . ' ' . $row['last_name'])) ?>', '<?= e($row['application_number']) ?>')">
+                                <i class="ti ti-trash"></i>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -43,3 +46,37 @@
         </table>
     </div>
 </div>
+
+<!-- Modal: Confirm Delete Student -->
+<div class="modal fade" id="deleteStudentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="ti ti-alert-triangle me-1"></i> Delete Student Profile</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="deleteStudentForm" method="POST" action="">
+                <?= csrf_field() ?>
+                <div class="modal-body p-4">
+                    <p class="mb-2 text-dark">Are you sure you want to permanently delete the profile for <strong id="deleteStudentName">—</strong> (<span id="deleteStudentAppNo" class="font-monospace"></span>)?</p>
+                    <div class="alert alert-warning small mb-0">
+                        <i class="ti ti-info-circle me-1"></i> <strong>Warning:</strong> This will remove duplicate profile records, enrollment data, portal credentials, and associated academic entries. This action cannot be undone.
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger btn-sm px-3 fw-bold"><i class="ti ti-trash me-1"></i> Yes, Delete Permanently</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmDeleteStudent(id, name, appNo) {
+    document.getElementById('deleteStudentName').innerText = name;
+    document.getElementById('deleteStudentAppNo').innerText = appNo;
+    document.getElementById('deleteStudentForm').action = '<?= url("admin/applications/") ?>' + id + '/delete';
+    new bootstrap.Modal(document.getElementById('deleteStudentModal')).show();
+}
+</script>

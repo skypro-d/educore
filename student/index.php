@@ -49,6 +49,20 @@ switch ($route) {
     case 'dashboard':
         $controller->dashboard();
         break;
+    case 'fees':
+    case 'fee-schedule':
+        if (!empty($_GET['receipt'])) {
+            $controller->receipt();
+        } else {
+            $controller->fees();
+        }
+        break;
+    case 'payment-history':
+        $controller->paymentHistory();
+        break;
+    case 'receipt':
+        $controller->receipt();
+        break;
     case 'timetable':
         $controller->timetable();
         break;

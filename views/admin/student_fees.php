@@ -175,7 +175,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label" style="font-size:13px;font-weight:600;">Amount Paying (NGN) <span style="color:#dc2626;">*</span></label>
-                        <input type="number" name="amount_paid" required min="1" step="50" class="form-control form-control-sm" id="amountPaidInput">
+                        <input type="number" name="amount_paid" required min="0.01" step="any" class="form-control form-control-sm" id="amountPaidInput">
                         <div class="form-text" id="amountHelp">Enter full or partial payment amount.</div>
                     </div>
                     <div class="mb-3">
@@ -224,7 +224,7 @@
                     <hr>
                     <div class="mb-3">
                         <label class="form-label" style="font-size:13px;font-weight:600;">Amount Paying (NGN) <span style="color:#dc2626;">*</span></label>
-                        <input type="number" name="amount_paid" required min="1" step="50" class="form-control form-control-sm" id="partialAmountInput">
+                        <input type="number" name="amount_paid" required min="0.01" step="any" class="form-control form-control-sm" id="partialAmountInput">
                     </div>
                     <div class="mb-3">
                         <label class="form-label" style="font-size:13px;font-weight:600;">Payment Method</label>
