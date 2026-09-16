@@ -313,7 +313,61 @@ $csrfToken = csrf_token();
                     </div>
                 </div>
 
-                <!-- 3. Parent & Guardian Contact Card -->
+                <!-- 3. Student Documents & Attachments Card -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-header bg-white border-bottom py-3 px-4">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="icon-circle bg-warning-subtle text-warning">
+                                <i class="ti ti-paperclip"></i>
+                            </div>
+                            <div>
+                                <h5 class="fw-bold mb-0 text-dark" style="font-size: 15px;">Student Documents &amp; Certificates</h5>
+                                <p class="text-muted small mb-0">Upload birth certificate, previous results, and other supporting records (PDF, PNG, JPG, DOC up to 5MB).</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small text-dark d-flex align-items-center justify-content-between">
+                                    <span><i class="ti ti-certificate me-1 text-primary"></i> Birth Certificate</span>
+                                    <span class="badge bg-light text-muted border" style="font-size: 10px;">Optional</span>
+                                </label>
+                                <input type="file" class="form-control rounded-3 shadow-none" name="birth_certificate" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx">
+                                <div class="form-text text-muted" style="font-size: 11px;">National population commission cert or hospital birth record.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small text-dark d-flex align-items-center justify-content-between">
+                                    <span><i class="ti ti-file-text me-1 text-primary"></i> Previous School Result / Transcript</span>
+                                    <span class="badge bg-light text-muted border" style="font-size: 10px;">Optional</span>
+                                </label>
+                                <input type="file" class="form-control rounded-3 shadow-none" name="previous_result" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx">
+                                <div class="form-text text-muted" style="font-size: 11px;">Last term report card, transcript, or BECE / FSLC result.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small text-dark d-flex align-items-center justify-content-between">
+                                    <span><i class="ti ti-award me-1 text-primary"></i> Testimonial</span>
+                                    <span class="badge bg-light text-muted border" style="font-size: 10px;">Optional</span>
+                                </label>
+                                <input type="file" class="form-control rounded-3 shadow-none" name="testimonial" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx">
+                                <div class="form-text text-muted" style="font-size: 11px;">Primary or junior school leaving testimonial.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small text-dark d-flex align-items-center justify-content-between">
+                                    <span><i class="ti ti-mail-opened me-1 text-primary"></i> Recommendation Letter</span>
+                                    <span class="badge bg-light text-muted border" style="font-size: 10px;">Optional</span>
+                                </label>
+                                <input type="file" class="form-control rounded-3 shadow-none" name="recommendation_letter" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx">
+                                <div class="form-text text-muted" style="font-size: 11px;">Letter from former school principal or community referee.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Parent & Guardian Contact Card -->
                 <div class="card border-0 shadow-sm rounded-4 mb-4">
                     <div class="card-header bg-white border-bottom py-3 px-4">
                         <div class="d-flex align-items-center gap-2">
@@ -366,7 +420,7 @@ $csrfToken = csrf_token();
                     </div>
                 </div>
 
-                <!-- 4. Health & Medical Background (Collapsible) -->
+                <!-- 5. Health & Medical Background (Collapsible) -->
                 <div class="card border-0 shadow-sm rounded-4 mb-4">
                     <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center cursor-pointer" data-bs-toggle="collapse" data-bs-target="#healthCollapse" aria-expanded="false" style="cursor: pointer;">
                         <div class="d-flex align-items-center gap-2">

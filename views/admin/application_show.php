@@ -164,13 +164,18 @@ $documents = [
             </div>
         </div>
         <div class="profile-card">
-            <div class="profile-section-label"><i class="ti ti-paperclip"></i> Documents</div>
+            <div class="profile-section-label d-flex justify-content-between align-items-center">
+                <span><i class="ti ti-paperclip"></i> Documents</span>
+                <a href="<?= url('admin/students/' . $application['id'] . '/edit') ?>" class="btn btn-outline-primary btn-sm py-0 px-2" style="font-size: 11px;">
+                    <i class="ti ti-upload me-1"></i> Upload / Edit
+                </a>
+            </div>
             <?php foreach ($documents as $doc): ?>
                 <div class="doc-row">
                     <div class="doc-icon"><i class="ti ti-file"></i></div>
                     <span class="doc-name"><?= e($doc[0]) ?></span>
                     <?php if ($doc[1]): ?>
-                        <a class="profile-pill pill-teal" download href="<?= url('uploads/' . $doc[1]) ?>">Verified</a>
+                        <a class="profile-pill pill-teal text-decoration-none" target="_blank" href="<?= url('uploads/' . $doc[1]) ?>"><i class="ti ti-eye me-1"></i> View</a>
                     <?php else: ?>
                         <span class="profile-pill pill-pending">Pending</span>
                     <?php endif; ?>

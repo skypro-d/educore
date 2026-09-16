@@ -154,6 +154,11 @@ if (preg_match('#^authorized-pickups/(\d+)/delete$#', $route, $m)) {
     $controller->deleteAuthorizedPickup((int) $m[1]);
     exit;
 }
+if (preg_match('#^timetable/(\d+)/delete$#', $route, $m)) {
+    require_post();
+    $academic->deleteTimetableSlot((int) $m[1]);
+    exit;
+}
 
 // Exact Switch routes
 switch ($route) {
@@ -316,6 +321,24 @@ switch ($route) {
         break;
     case 'result-sheet/save-remark':
         $academic->saveTermRemark();
+        break;
+
+    // Class Timetable Management
+    case 'timetable':
+    case 'timetables':
+        $academic->timetable();
+        break;
+    case 'timetable/save':
+        require_post();
+        $academic->saveTimetableSlot();
+        break;
+    case 'timetable/copy':
+        require_post();
+        $academic->copyClassTimetable();
+        break;
+    case 'timetable/clear':
+        require_post();
+        $academic->clearClassTimetable();
         break;
 
     // Promotion

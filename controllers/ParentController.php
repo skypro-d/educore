@@ -452,9 +452,9 @@ final class ParentController
     public function timetable(): void
     {
         $this->requireParent();
-        $applicantId = (int) $_SESSION['parent']['applicant_id'];
+        $applicantId = $this->activeChildApplicantId();
         $student = (new Applicant($this->db))->find($applicantId);
-        $classId = (int) $student['class_id'];
+        $classId = (int) ($student['class_id'] ?? 0);
         
         $stmt = $this->db->prepare(
             "SELECT t.*, s.name AS subject_name, s.code AS subject_code, st.first_name, st.last_name 

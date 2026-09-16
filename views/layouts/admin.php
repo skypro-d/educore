@@ -38,6 +38,7 @@
     
     <div class="nav-section">Academics &amp; Class</div>
     <a class="nav-item <?= $current === 'subjects' ? 'active' : '' ?>" href="<?= url('admin/subjects') ?>"><i class="ti ti-book" data-fallback="S"></i> Subject Setup</a>
+    <a class="nav-item <?= $current === 'timetable' || $current === 'timetables' ? 'active' : '' ?>" href="<?= url('admin/timetable') ?>"><i class="ti ti-calendar-time" data-fallback="Tt"></i> Class Timetable</a>
     <a class="nav-item <?= $current === 'results' ? 'active' : '' ?>" href="<?= url('admin/results') ?>"><i class="ti ti-notebook" data-fallback="R"></i> Enter Scores &amp; CA</a>
     <a class="nav-item <?= $current === 'attendance' ? 'active' : '' ?>" href="<?= url('admin/attendance') ?>"><i class="ti ti-calendar-check" data-fallback="At"></i> Daily Attendance</a>
     <a class="nav-item <?= $current === 'attendance-report' ? 'active' : '' ?>" href="<?= url('admin/attendance-report') ?>"><i class="ti ti-file-analytics" data-fallback="Ar"></i> Attendance Report</a>

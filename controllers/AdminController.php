@@ -347,6 +347,50 @@ final class AdminController
             }
         }
 
+        // Optional document uploads
+        $docMimes = [
+            'application/pdf' => 'pdf',
+            'image/jpeg' => 'jpg',
+            'image/pjpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/x-png' => 'png',
+            'image/webp' => 'webp',
+            'application/msword' => 'doc',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx'
+        ];
+
+        $birthCertPath = $application['birth_certificate'] ?? null;
+        if (!empty($_FILES['birth_certificate']['tmp_name']) && is_uploaded_file($_FILES['birth_certificate']['tmp_name'])) {
+            $uploaded = upload_file('birth_certificate', 'documents', $docMimes);
+            if ($uploaded) {
+                $birthCertPath = $uploaded;
+            }
+        }
+
+        $prevResultPath = $application['previous_result'] ?? null;
+        if (!empty($_FILES['previous_result']['tmp_name']) && is_uploaded_file($_FILES['previous_result']['tmp_name'])) {
+            $uploaded = upload_file('previous_result', 'documents', $docMimes);
+            if ($uploaded) {
+                $prevResultPath = $uploaded;
+            }
+        }
+
+        $testimonialPath = $application['testimonial'] ?? null;
+        if (!empty($_FILES['testimonial']['tmp_name']) && is_uploaded_file($_FILES['testimonial']['tmp_name'])) {
+            $uploaded = upload_file('testimonial', 'documents', $docMimes);
+            if ($uploaded) {
+                $testimonialPath = $uploaded;
+            }
+        }
+
+        $recLetterPath = $application['recommendation_letter'] ?? null;
+        if (!empty($_FILES['recommendation_letter']['tmp_name']) && is_uploaded_file($_FILES['recommendation_letter']['tmp_name'])) {
+            $uploaded = upload_file('recommendation_letter', 'documents', $docMimes);
+            if ($uploaded) {
+                $recLetterPath = $uploaded;
+            }
+        }
+
         try {
             $this->db->beginTransaction();
 
@@ -380,6 +424,10 @@ final class AdminController
                 emergency_relationship = :emergency_relationship,
                 emergency_phone = :emergency_phone,
                 passport_photo = :passport_photo,
+                birth_certificate = :birth_certificate,
+                previous_result = :previous_result,
+                testimonial = :testimonial,
+                recommendation_letter = :recommendation_letter,
                 enrolled_at = :enrolled_at,
                 updated_at = NOW()
             WHERE id = :id";
@@ -415,6 +463,10 @@ final class AdminController
                 ':emergency_relationship' => trim($_POST['emergency_relationship'] ?? '') ?: null,
                 ':emergency_phone' => trim($_POST['emergency_phone'] ?? '') ?: null,
                 ':passport_photo' => $passportPath,
+                ':birth_certificate' => $birthCertPath,
+                ':previous_result' => $prevResultPath,
+                ':testimonial' => $testimonialPath,
+                ':recommendation_letter' => $recLetterPath,
                 ':enrolled_at' => ($enrolledAt !== '' && strtotime($enrolledAt)) ? date('Y-m-d H:i:s', strtotime($enrolledAt)) : $application['enrolled_at'],
                 ':id' => $id,
             ]);

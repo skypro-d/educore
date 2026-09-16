@@ -385,4 +385,190 @@ final class AcademicController
         flash('success', 'Terminal remarks saved successfully.');
         redirect('admin/result-sheet/' . $applicantId . '?year=' . urlencode($year) . '&term=' . urlencode($term));
     }
+
+    /* ─── Class Timetable Management ──────────────────────── */
+
+    public function timetable(): void
+    {
+        require_admin();
+        $classes = (new ClassModel($this->db))->all();
+        $classId = (int) ($_GET['class_id'] ?? ($classes[0]['id'] ?? 0));
+
+        $selectedClass = null;
+        foreach ($classes as $c) {
+            if ((int)$c['id'] === $classId) {
+                $selectedClass = $c;
+                break;
+            }
+        }
+
+        // Active subjects and active teaching staff
+        $subjects = $this->db->query("SELECT id, name, code FROM subjects WHERE is_active = 1 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $teachers = $this->db->query("SELECT id, first_name, last_name, staff_id, phone FROM staff WHERE status = 'Active' ORDER BY first_name ASC, last_name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch timetable schedule for this class
+        $schedule = [];
+        if ($classId > 0) {
+            $stmt = $this->db->prepare(
+                "SELECT t.*, s.name AS subject_name, s.code AS subject_code, 
+                        st.first_name, st.last_name, st.staff_id AS teacher_staff_code
+                 FROM timetables t
+                 JOIN subjects s ON s.id = t.subject_id
+                 LEFT JOIN staff st ON st.id = t.teacher_id
+                 WHERE t.class_id = ?
+                 ORDER BY FIELD(t.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), t.start_time ASC"
+            );
+            $stmt->execute([$classId]);
+            $schedule = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        $timetableByDay = [];
+        foreach ($days as $d) {
+            $timetableByDay[$d] = [];
+        }
+        foreach ($schedule as $row) {
+            $day = ucfirst(strtolower($row['day_of_week']));
+            if (!isset($timetableByDay[$day])) {
+                $timetableByDay[$day] = [];
+            }
+            $timetableByDay[$day][] = $row;
+        }
+
+        // Summary counts per class for sidebar/tabs
+        $classCounts = [];
+        $stmtCounts = $this->db->query("SELECT class_id, COUNT(*) AS total_slots FROM timetables GROUP BY class_id");
+        foreach ($stmtCounts->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $classCounts[(int)$row['class_id']] = (int)$row['total_slots'];
+        }
+
+        render('admin/timetable', compact('classes', 'selectedClass', 'classId', 'subjects', 'teachers', 'timetableByDay', 'days', 'classCounts', 'schedule'), 'admin');
+    }
+
+    public function saveTimetableSlot(): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $id        = (int) ($_POST['id'] ?? 0);
+        $classId   = (int) ($_POST['class_id'] ?? 0);
+        $dayOfWeek = trim($_POST['day_of_week'] ?? '');
+        $subjectId = (int) ($_POST['subject_id'] ?? 0);
+        $teacherId = !empty($_POST['teacher_id']) ? (int) $_POST['teacher_id'] : null;
+        $startTime = trim($_POST['start_time'] ?? '');
+        $endTime   = trim($_POST['end_time'] ?? '');
+
+        if ($classId <= 0 || $subjectId <= 0 || $dayOfWeek === '' || $startTime === '' || $endTime === '') {
+            flash('danger', 'Please provide Class, Day, Subject, Start Time, and End Time.');
+            redirect('admin/timetable?class_id=' . $classId);
+            return;
+        }
+
+        if (strtotime($endTime) <= strtotime($startTime)) {
+            flash('danger', 'Period End Time must be later than Start Time.');
+            redirect('admin/timetable?class_id=' . $classId);
+            return;
+        }
+
+        if ($id > 0) {
+            $stmt = $this->db->prepare(
+                "UPDATE timetables SET 
+                    class_id = ?, day_of_week = ?, subject_id = ?, teacher_id = ?, start_time = ?, end_time = ?
+                 WHERE id = ?"
+            );
+            $stmt->execute([$classId, $dayOfWeek, $subjectId, $teacherId, $startTime, $endTime, $id]);
+            flash('success', 'Timetable period updated successfully.');
+        } else {
+            $stmt = $this->db->prepare(
+                "INSERT INTO timetables (class_id, day_of_week, subject_id, teacher_id, start_time, end_time)
+                 VALUES (?, ?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([$classId, $dayOfWeek, $subjectId, $teacherId, $startTime, $endTime]);
+            flash('success', 'New period added to ' . $dayOfWeek . ' schedule.');
+        }
+
+        redirect('admin/timetable?class_id=' . $classId);
+    }
+
+    public function deleteTimetableSlot(int $id): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $classId = (int) ($_POST['class_id'] ?? 0);
+        if ($classId <= 0) {
+            $stmt = $this->db->prepare("SELECT class_id FROM timetables WHERE id = ?");
+            $stmt->execute([$id]);
+            $row = $stmt->fetch();
+            $classId = (int) ($row['class_id'] ?? 0);
+        }
+
+        $this->db->prepare("DELETE FROM timetables WHERE id = ?")->execute([$id]);
+        flash('success', 'Timetable period deleted.');
+        redirect('admin/timetable?class_id=' . $classId);
+    }
+
+    public function copyClassTimetable(): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $fromClassId = (int) ($_POST['from_class_id'] ?? 0);
+        $toClassId   = (int) ($_POST['to_class_id'] ?? 0);
+        $overwrite   = !empty($_POST['overwrite']);
+
+        if ($fromClassId <= 0 || $toClassId <= 0) {
+            flash('danger', 'Please select source and destination classes.');
+            redirect('admin/timetable?class_id=' . $toClassId);
+            return;
+        }
+
+        if ($fromClassId === $toClassId) {
+            flash('warning', 'Source and target class cannot be the same.');
+            redirect('admin/timetable?class_id=' . $toClassId);
+            return;
+        }
+
+        // Fetch source slots
+        $stmtSrc = $this->db->prepare("SELECT * FROM timetables WHERE class_id = ?");
+        $stmtSrc->execute([$fromClassId]);
+        $slots = $stmtSrc->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($slots)) {
+            flash('warning', 'Source class has no timetable slots to copy.');
+            redirect('admin/timetable?class_id=' . $fromClassId);
+            return;
+        }
+
+        if ($overwrite) {
+            $this->db->prepare("DELETE FROM timetables WHERE class_id = ?")->execute([$toClassId]);
+        }
+
+        $stmtIns = $this->db->prepare(
+            "INSERT INTO timetables (class_id, day_of_week, subject_id, teacher_id, start_time, end_time)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        );
+
+        $copied = 0;
+        foreach ($slots as $s) {
+            $stmtIns->execute([$toClassId, $s['day_of_week'], $s['subject_id'], $s['teacher_id'], $s['start_time'], $s['end_time']]);
+            $copied++;
+        }
+
+        flash('success', "Successfully copied {$copied} timetable periods to destination class.");
+        redirect('admin/timetable?class_id=' . $toClassId);
+    }
+
+    public function clearClassTimetable(): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $classId = (int) ($_POST['class_id'] ?? 0);
+        if ($classId > 0) {
+            $this->db->prepare("DELETE FROM timetables WHERE class_id = ?")->execute([$classId]);
+            flash('success', 'All timetable periods cleared for the selected class.');
+        }
+        redirect('admin/timetable?class_id=' . $classId);
+    }
 }

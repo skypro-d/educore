@@ -128,11 +128,36 @@ final class StudentEnrollmentService
         $studentHash = password_hash($studentPass, PASSWORD_BCRYPT);
         $parentHash = password_hash($parentPass, PASSWORD_BCRYPT);
 
-        // Passport photograph upload
+        // Document uploads
+        $docMimes = [
+            'application/pdf' => 'pdf',
+            'image/jpeg' => 'jpg',
+            'image/pjpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/x-png' => 'png',
+            'image/webp' => 'webp',
+            'application/msword' => 'doc',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx'
+        ];
+        $imgMimes = [
+            'image/jpeg' => 'jpg',
+            'image/pjpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/x-png' => 'png',
+            'image/webp' => 'webp'
+        ];
+
         $passportPath = null;
-        if ($passportFile !== null && !empty($passportFile['name'])) {
+        if (!empty($_FILES['passport_photo']['name'])) {
+            $passportPath = upload_file('passport_photo', 'passports', $imgMimes);
+        } elseif ($passportFile !== null && !empty($passportFile['name'])) {
             $passportPath = $this->uploadPassport($passportFile);
         }
+
+        $birthCertPath = !empty($_FILES['birth_certificate']['name']) ? upload_file('birth_certificate', 'documents', $docMimes) : null;
+        $prevResultPath = !empty($_FILES['previous_result']['name']) ? upload_file('previous_result', 'documents', $docMimes) : null;
+        $testimonialPath = !empty($_FILES['testimonial']['name']) ? upload_file('testimonial', 'documents', $docMimes) : null;
+        $recLetterPath = !empty($_FILES['recommendation_letter']['name']) ? upload_file('recommendation_letter', 'documents', $docMimes) : null;
 
         // Enrollment date (custom/historical or current)
         $customEnrolledAt = trim((string) ($data['enrolled_at'] ?? ''));
@@ -150,7 +175,8 @@ final class StudentEnrollmentService
                 parent_name, parent_phone, parent_email, father_name, mother_name, guardian_name, parent_occupation,
                 class_id, previous_school, previous_class, blood_group, allergies, special_needs,
                 emergency_name, emergency_relationship, emergency_phone,
-                passport_photo, status, admission_status, enrollment_status,
+                passport_photo, birth_certificate, previous_result, testimonial, recommendation_letter,
+                status, admission_status, enrollment_status,
                 student_status, enrolled_at, created_at, updated_at
             ) VALUES (
                 :application_number, :admission_type, :admission_number, :student_username,
@@ -159,7 +185,8 @@ final class StudentEnrollmentService
                 :parent_name, :parent_phone, :parent_email, :father_name, :mother_name, :guardian_name, :parent_occupation,
                 :class_id, :previous_school, :previous_class, :blood_group, :allergies, :special_needs,
                 :emergency_name, :emergency_relationship, :emergency_phone,
-                :passport_photo, 'Enrolled', 'Enrolled', 'Completed',
+                :passport_photo, :birth_certificate, :previous_result, :testimonial, :recommendation_letter,
+                'Enrolled', 'Enrolled', 'Completed',
                 'Active', :enrolled_at, NOW(), NOW()
             )";
 
@@ -196,6 +223,10 @@ final class StudentEnrollmentService
                 ':emergency_relationship' => trim((string) ($data['emergency_relationship'] ?? '')) ?: null,
                 ':emergency_phone' => trim((string) ($data['emergency_phone'] ?? '')) ?: null,
                 ':passport_photo' => $passportPath,
+                ':birth_certificate' => $birthCertPath,
+                ':previous_result' => $prevResultPath,
+                ':testimonial' => $testimonialPath,
+                ':recommendation_letter' => $recLetterPath,
                 ':enrolled_at' => $enrolledAtDate,
             ]);
 

@@ -1362,24 +1362,22 @@ final class TeacherController
         $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
         $scheduleByDay = array_fill_keys($days, []);
 
-        if (!empty($classIds)) {
-            $inClasses = implode(',', array_map('intval', $classIds));
-            $stmt = $this->db->prepare(
-                "SELECT t.*, s.name AS subject_name, s.code AS subject_code, c.name AS class_name
-                 FROM timetables t
-                 JOIN subjects s ON s.id = t.subject_id
-                 JOIN classes c ON c.id = t.class_id
-                 WHERE (t.teacher_id = ? OR t.class_id IN ({$inClasses}))
-                 ORDER BY t.start_time ASC"
-            );
-            $stmt->execute([$staffId]);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $inClasses = !empty($classIds) ? implode(',', array_map('intval', $classIds)) : '0';
+        $stmt = $this->db->prepare(
+            "SELECT t.*, s.name AS subject_name, s.code AS subject_code, c.name AS class_name
+             FROM timetables t
+             JOIN subjects s ON s.id = t.subject_id
+             JOIN classes c ON c.id = t.class_id
+             WHERE (t.teacher_id = ? OR t.class_id IN ({$inClasses}))
+             ORDER BY t.start_time ASC"
+        );
+        $stmt->execute([$staffId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            foreach ($rows as $r) {
-                $day = ucfirst(strtolower($r['day_of_week']));
-                if (isset($scheduleByDay[$day])) {
-                    $scheduleByDay[$day][] = $r;
-                }
+        foreach ($rows as $r) {
+            $day = ucfirst(strtolower($r['day_of_week']));
+            if (isset($scheduleByDay[$day])) {
+                $scheduleByDay[$day][] = $r;
             }
         }
 

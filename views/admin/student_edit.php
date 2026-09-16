@@ -225,51 +225,102 @@ $fullName = trim($application['first_name'] . ' ' . ($application['middle_name']
             </div>
         </div>
 
-        <!-- 4. Health & Emergency Details (Collapsible) -->
+        <!-- 5. Student Documents & Uploads -->
         <div class="card border-0 shadow-sm rounded-4 mb-4">
-            <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#healthCollapse" aria-expanded="true" style="cursor: pointer;">
+            <div class="card-header bg-white border-bottom py-3 px-4">
                 <div class="d-flex align-items-center gap-2">
-                    <div class="icon-circle bg-danger-subtle text-danger" style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;">
-                        <i class="ti ti-heartbeat"></i>
+                    <div class="icon-circle bg-warning-subtle text-warning" style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+                        <i class="ti ti-paperclip"></i>
                     </div>
                     <div>
-                        <h5 class="fw-bold mb-0 text-dark" style="font-size: 15px;">Health, Special Needs &amp; Emergency Contacts</h5>
-                        <p class="text-muted small mb-0">Medical notes, allergies, blood group, and emergency contacts.</p>
+                        <h5 class="fw-bold mb-0 text-dark" style="font-size: 15px;">Student Documents &amp; Certificates</h5>
+                        <p class="text-muted small mb-0">View current attachments or upload replacement documents (PDF, PNG, JPG, DOC up to 5MB).</p>
                     </div>
                 </div>
-                <i class="ti ti-chevron-down text-muted"></i>
             </div>
-            <div class="collapse show" id="healthCollapse">
-                <div class="card-body p-4">
-                    <div class="row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold small text-dark">Blood Group</label>
-                            <select class="form-select rounded-3 shadow-none" name="blood_group">
-                                <option value="">-- Choose --</option>
-                                <?php foreach (['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'] as $bg): ?>
-                                    <option value="<?= $bg ?>" <?= ($application['blood_group'] ?? '') === $bg ? 'selected' : '' ?>><?= $bg ?></option>
-                                <?php endforeach; ?>
-                            </select>
+            <div class="card-body p-4">
+                <div class="row g-4">
+                    <!-- Birth Certificate -->
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold text-dark small"><i class="ti ti-certificate me-1 text-primary"></i> Birth Certificate</span>
+                                <?php if (!empty($application['birth_certificate'])): ?>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 11px;">Uploaded</span>
+                                        <a href="<?= url('uploads/' . $application['birth_certificate']) ?>" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-2 rounded-2" style="font-size: 11px;">
+                                            <i class="ti ti-eye me-1"></i> View
+                                        </a>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size: 11px;">Pending</span>
+                                <?php endif; ?>
+                            </div>
+                            <input type="file" class="form-control form-control-sm rounded-3 shadow-none bg-white" name="birth_certificate" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx">
+                            <div class="form-text text-muted" style="font-size: 11px;">Upload to add or replace current certificate.</div>
                         </div>
+                    </div>
 
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold small text-dark">Known Allergies</label>
-                            <input type="text" class="form-control rounded-3 shadow-none" name="allergies" value="<?= e($application['allergies'] ?? '') ?>">
+                    <!-- Previous School Result -->
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold text-dark small"><i class="ti ti-file-text me-1 text-primary"></i> Previous School Result / Transcript</span>
+                                <?php if (!empty($application['previous_result'])): ?>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 11px;">Uploaded</span>
+                                        <a href="<?= url('uploads/' . $application['previous_result']) ?>" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-2 rounded-2" style="font-size: 11px;">
+                                            <i class="ti ti-eye me-1"></i> View
+                                        </a>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size: 11px;">Pending</span>
+                                <?php endif; ?>
+                            </div>
+                            <input type="file" class="form-control form-control-sm rounded-3 shadow-none bg-white" name="previous_result" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx">
+                            <div class="form-text text-muted" style="font-size: 11px;">Upload to add or replace report card / result.</div>
                         </div>
+                    </div>
 
-                        <div class="col-md-5">
-                            <label class="form-label fw-semibold small text-dark">Special Educational / Physical Needs</label>
-                            <input type="text" class="form-control rounded-3 shadow-none" name="special_needs" value="<?= e($application['special_needs'] ?? '') ?>">
+                    <!-- Testimonial -->
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold text-dark small"><i class="ti ti-award me-1 text-primary"></i> Testimonial</span>
+                                <?php if (!empty($application['testimonial'])): ?>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 11px;">Uploaded</span>
+                                        <a href="<?= url('uploads/' . $application['testimonial']) ?>" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-2 rounded-2" style="font-size: 11px;">
+                                            <i class="ti ti-eye me-1"></i> View
+                                        </a>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size: 11px;">Pending</span>
+                                <?php endif; ?>
+                            </div>
+                            <input type="file" class="form-control form-control-sm rounded-3 shadow-none bg-white" name="testimonial" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx">
+                            <div class="form-text text-muted" style="font-size: 11px;">Upload to add or replace testimonial.</div>
                         </div>
+                    </div>
 
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold small text-dark">Emergency Contact Name</label>
-                            <input type="text" class="form-control rounded-3 shadow-none" name="emergency_name" value="<?= e($application['emergency_name'] ?? '') ?>">
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold small text-dark">Emergency Contact Phone</label>
-                            <input type="tel" class="form-control rounded-3 shadow-none" name="emergency_phone" value="<?= e($application['emergency_phone'] ?? '') ?>">
+                    <!-- Recommendation Letter -->
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold text-dark small"><i class="ti ti-mail-opened me-1 text-primary"></i> Recommendation Letter</span>
+                                <?php if (!empty($application['recommendation_letter'])): ?>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 11px;">Uploaded</span>
+                                        <a href="<?= url('uploads/' . $application['recommendation_letter']) ?>" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-2 rounded-2" style="font-size: 11px;">
+                                            <i class="ti ti-eye me-1"></i> View
+                                        </a>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size: 11px;">Pending</span>
+                                <?php endif; ?>
+                            </div>
+                            <input type="file" class="form-control form-control-sm rounded-3 shadow-none bg-white" name="recommendation_letter" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx">
+                            <div class="form-text text-muted" style="font-size: 11px;">Upload to add or replace recommendation letter.</div>
                         </div>
                     </div>
                 </div>

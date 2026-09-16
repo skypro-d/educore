@@ -1,44 +1,89 @@
-<h1 class="h3 mb-3"><i class="ti ti-calendar-event text-primary" style="margin-right:8px"></i><?= e($student['first_name']) ?>'s Weekly Class Schedule</h1>
-
-<div class="row">
-    <div class="col-12">
-        <div class="card shadow-sm border-0 p-3" style="border-radius:12px; justify-content:flex-start;">
-            <div class="table-responsive">
-                <table class="table table-bordered align-middle text-center" style="font-size:13px;min-width:650px;">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width:120px;">Day</th>
-                            <th>Class Timetable Slots (Subject / Teacher / Time)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($days as $day): ?>
-                        <tr>
-                            <td class="table-light" style="font-weight:700;color:#334155;text-align:left;vertical-align:middle;padding-left:15px;">
-                                <?= $day ?>
-                            </td>
-                            <td>
-                                <div class="d-flex flex-wrap gap-2" style="min-height:45px;align-items:center;">
-                                <?php if (!empty($timetable[$day])): foreach ($timetable[$day] as $slot): ?>
-                                    <div style="background:#f1f5f9;border-left:3px solid var(--parent-primary);padding:8px 12px;border-radius:6px;text-align:left;min-width:180px;flex:1;">
-                                        <div style="font-weight:700;color:#1e293b;font-size:12.5px;"><?= e($slot['subject_name']) ?></div>
-                                        <div style="font-size:11px;color:#64748b;margin-top:2px;">
-                                            <i class="ti ti-user" style="margin-right:3px"></i><?= e($slot['first_name'] . ' ' . $slot['last_name']) ?>
-                                        </div>
-                                        <div style="font-size:10.5px;font-weight:600;color:var(--parent-accent);margin-top:4px;">
-                                            <i class="ti ti-clock" style="margin-right:3px"></i><?= date('h:i A', strtotime($slot['start_time'])) ?> - <?= date('h:i A', strtotime($slot['end_time'])) ?>
-                                        </div>
-                                    </div>
-                                <?php endforeach; else: ?>
-                                    <span style="font-size:12px;color:#94a3b8;margin-left:10px;">No classes scheduled</span>
-                                <?php endif; ?>
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+<?php
+/**
+ * views/parent/timetable.php
+ * Parent Portal Child Timetable View
+ */
+$childName = !empty($student['first_name']) ? $student['first_name'] . ' ' . $student['last_name'] : 'Child';
+?>
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h1 class="h3 fw-bold text-dark mb-1"><i class="ti ti-calendar-time text-primary me-2"></i><?= e($student['first_name'] ?? 'Child') ?>'s Weekly Timetable</h1>
+        <p class="text-muted small mb-0">Official class schedule, lecture hours, and assigned teachers for <?= e($childName) ?>.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-light text-dark border py-2 px-3 fw-bold" style="border-radius: 20px; font-size: 12px;">
+            Today: <strong><?= date('l') ?></strong>
+        </span>
+        <button type="button" class="btn btn-outline-primary btn-sm px-3 shadow-sm rounded-3" onclick="window.print()">
+            <i class="ti ti-printer me-1"></i> Print Schedule
+        </button>
     </div>
 </div>
+
+<div class="row g-4 mb-4">
+    <?php foreach ($days as $day): ?>
+        <?php 
+            $slots = $timetable[$day] ?? []; 
+            $isToday = (date('l') === $day);
+        ?>
+        <div class="col-lg-6 col-xl-4">
+            <div class="card border-0 shadow-sm rounded-4 h-100 bg-white" style="<?= $isToday ? 'border-top: 4px solid var(--parent-primary, #16a34a) !important; background: #fafcff;' : '' ?>">
+                <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <h5 class="fw-bold mb-0 text-dark" style="font-size: 15px;"><?= $day ?></h5>
+                        <?php if ($isToday): ?>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 10px;">Today</span>
+                        <?php endif; ?>
+                    </div>
+                    <span class="badge bg-light text-muted border" style="font-size: 11px;">
+                        <?= count($slots) ?> <?= count($slots) === 1 ? 'Period' : 'Periods' ?>
+                    </span>
+                </div>
+                <div class="card-body p-3">
+                    <?php if (empty($slots)): ?>
+                        <div class="text-center py-4 text-muted">
+                            <i class="ti ti-calendar-off d-block mb-1 text-muted" style="font-size: 24px; opacity: 0.4;"></i>
+                            <span class="small">No classes scheduled</span>
+                        </div>
+                    <?php else: ?>
+                        <div class="d-flex flex-column gap-2">
+                            <?php foreach ($slots as $slot): ?>
+                                <div class="p-3 bg-light rounded-3 border d-flex flex-column gap-1">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="badge bg-white text-dark border font-monospace shadow-sm" style="font-size: 11px;">
+                                            <i class="ti ti-clock me-1 text-primary"></i>
+                                            <?= date('g:i A', strtotime($slot['start_time'])) ?> - <?= date('g:i A', strtotime($slot['end_time'])) ?>
+                                        </span>
+                                        <?php if (!empty($slot['subject_code'])): ?>
+                                            <span class="badge bg-secondary-subtle text-secondary" style="font-size: 10px;"><?= e($slot['subject_code']) ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="fw-bold text-dark mt-1" style="font-size: 13.5px;">
+                                        <?= e($slot['subject_name']) ?>
+                                    </div>
+                                    <div class="text-muted small" style="font-size: 11.5px;">
+                                        <i class="ti ti-user me-1 text-success"></i>
+                                        <?= !empty($slot['first_name']) ? e($slot['first_name'] . ' ' . $slot['last_name']) : 'Subject Teacher' ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    <?php endforeach; ?>
+</div>
+
+<style>
+@media print {
+    .parent-sidebar, .parent-mobile-bar, .btn, .breadcrumb, .powered-credit {
+        display: none !important;
+    }
+    .card {
+        border: 1px solid #ddd !important;
+        box-shadow: none !important;
+        break-inside: avoid;
+    }
+}
+</style>
