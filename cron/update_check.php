@@ -52,6 +52,18 @@ if ($check['update_available'] ?? false) {
         echo "[{$timestamp}] Update Result: " . ($result['message'] ?? 'Done') . "\n";
     } else {
         echo "[{$timestamp}] Update v{$latest} is available for manual installation in the Admin Dashboard.\n";
+        try {
+            $db = Database::connect();
+            $msg = "EduCore software update v{$latest} is now available for download. Visit Updates & Upgrades in the admin menu to review release notes and install.";
+            $stmt = $db->prepare("SELECT id FROM notifications WHERE user_type='admin' AND title LIKE ? LIMIT 1");
+            $stmt->execute(["%v{$latest}%"]);
+            if (!$stmt->fetch()) {
+                $insNotif = $db->prepare("INSERT INTO notifications (user_type, user_id, title, message, is_read, created_at) VALUES ('admin', 0, ?, ?, 0, NOW())");
+                $insNotif->execute(["EduCore Update Available: v{$latest}", $msg]);
+            }
+        } catch (Throwable $e) {
+            // Ignore if notifications table is unavailable
+        }
     }
 } else {
     echo "[{$timestamp}] EduCore is up to date (Current: v" . (defined('EDUCORE_VERSION') ? EDUCORE_VERSION : '1.0.0') . ").\n";

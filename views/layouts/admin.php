@@ -13,8 +13,21 @@
 <body class="admin-shell">
 <button class="admin-sidebar-overlay" id="adminSidebarOverlay" type="button" aria-label="Close admin menu"></button>
 <aside class="sidebar" id="adminSidebar">
-    <?php $current = trim($_GET['route'] ?? 'dashboard', '/'); ?>
-    <?php $logoUrl = school_logo_url(); ?>
+    <?php 
+    $current = trim($_GET['route'] ?? 'dashboard', '/');
+    $logoUrl = school_logo_url();
+
+    $updateNotification = null;
+    if (file_exists(__DIR__ . '/../../updater/UpdateChecker.php')) {
+        require_once __DIR__ . '/../../updater/UpdateChecker.php';
+        try {
+            $updateNotification = UpdateChecker::check(false);
+        } catch (Throwable $e) {
+            $updateNotification = null;
+        }
+    }
+    $isUpdateAvailable = !empty($updateNotification['update_available']);
+    ?>
     <div class="brand sidebar-logo" style="display:flex;align-items:center;gap:10px;margin-bottom:1.5rem;min-width:0;">
         <?php if ($logoUrl): ?>
             <img src="<?= e($logoUrl) ?>" alt="Logo" class="sidebar-logo-img" style="width:40px !important;height:40px !important;max-width:40px !important;max-height:40px !important;object-fit:contain !important;border-radius:8px !important;background:#fff !important;padding:2px !important;border:1px solid #e2e8f0 !important;flex-shrink:0 !important;display:block !important;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -62,7 +75,14 @@
     <a class="nav-item <?= $current === 'classes' ? 'active' : '' ?>" href="<?= url('admin/classes') ?>"><i class="ti ti-building" data-fallback="C"></i> Classes &amp; Capacity</a>
     <a class="nav-item <?= $current === 'communications' ? 'active' : '' ?>" href="<?= url('admin/communications') ?>"><i class="ti ti-message-2" data-fallback="Co"></i> Communication Center</a>
     <a class="nav-item <?= $current === 'devices' ? 'active' : '' ?>" href="<?= url('admin/devices') ?>"><i class="ti ti-device-nfc" data-fallback="Dev"></i> POS Scanner Devices</a>
-    <a class="nav-item <?= $current === 'updates' ? 'active' : '' ?>" href="<?= url('admin/updates') ?>"><i class="ti ti-cloud-download" data-fallback="Up"></i> Updates &amp; Upgrades</a>
+    <a class="nav-item <?= $current === 'updates' ? 'active' : '' ?>" href="<?= url('admin/updates') ?>">
+        <i class="ti ti-cloud-download" data-fallback="Up"></i> Updates &amp; Upgrades
+        <?php if ($isUpdateAvailable): ?>
+            <span class="badge bg-danger rounded-pill ms-auto shadow-sm" style="font-size: 10px; padding: 3px 8px; font-weight:700;">
+                <i class="ti ti-sparkles me-1"></i>v<?= e($updateNotification['latest_version'] ?? 'New') ?>
+            </span>
+        <?php endif; ?>
+    </a>
 
     <div class="nav-section">Facilities (Stubs)</div>
     <a class="nav-item <?= $current === 'library' ? 'active' : '' ?>" href="<?= url('admin/library') ?>"><i class="ti ti-books" data-fallback="L"></i> Library Catalog</a>
@@ -93,6 +113,30 @@
                 <strong>Remote Support Mode:</strong> SST Support is logged in as this school's administrator.
             </div>
             <a href="<?= url('superadmin/schools/impersonate/stop') ?>" class="btn btn-sm btn-info text-white font-monospace" style="font-size:11px; font-weight:700;">Exit Impersonation &amp; Return to Hub</a>
+        </div>
+    <?php endif; ?>
+    <?php if ($isUpdateAvailable && $current !== 'updates'): ?>
+        <div class="alert alert-primary border-0 shadow-sm rounded-4 d-flex flex-wrap align-items-center justify-content-between p-3 mb-4" style="background: linear-gradient(135deg, #0b3d91 0%, #1e40af 100%); color: #fff; border-left: 5px solid #f59e0b !important;">
+            <div class="d-flex align-items-center gap-3">
+                <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    <i class="ti ti-sparkles text-warning"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="badge bg-warning text-dark fw-bold px-2 py-1" style="font-size: 11px;">Update Available</span>
+                        <strong style="font-size: 15px; letter-spacing: 0.2px;">EduCore Software Release v<?= e($updateNotification['latest_version'] ?? '') ?> is Ready</strong>
+                    </div>
+                    <div class="small mt-1" style="color: rgba(255,255,255,0.9); font-size: 12.5px; line-height: 1.4;">
+                        Your system is currently running <strong>v<?= e($updateNotification['current_version'] ?? (defined('EDUCORE_VERSION') ? EDUCORE_VERSION : '1.0.0')) ?></strong>. 
+                        <?= e(!empty($updateNotification['release_notes']) ? mb_strimwidth($updateNotification['release_notes'], 0, 130, '...') : 'New features, security updates, and performance optimizations are ready to install.') ?>
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+                <a href="<?= url('admin/updates') ?>" class="btn btn-warning btn-sm px-3 py-2 fw-bold shadow-sm rounded-3" style="color: #0f172a; font-size: 12.5px;">
+                    <i class="ti ti-cloud-download me-1"></i> Review &amp; Install Update
+                </a>
+            </div>
         </div>
     <?php endif; ?>
     <?php LicenseGuard::renderBanner(); ?>
