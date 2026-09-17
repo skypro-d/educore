@@ -264,9 +264,43 @@ final class ParentController
     public function child(): void
     {
         $this->requireParent();
-        $student = (new Applicant($this->db))->find((int) $_SESSION['parent']['applicant_id']);
+        $applicantId = (int) $_SESSION['parent']['applicant_id'];
+        $student = (new Applicant($this->db))->find($applicantId);
         $children = parent_linked_children();
-        render('parent/child', compact('student', 'children'), 'parent');
+
+        // Fetch term fee payments for this child
+        $stmtFeePayments = $this->db->prepare(
+            "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year
+             FROM student_fee_payments sfp
+             JOIN fee_structures fs ON fs.id = sfp.fee_structure_id
+             WHERE sfp.applicant_id = ?
+             ORDER BY sfp.created_at DESC, sfp.id DESC"
+        );
+        $stmtFeePayments->execute([$applicantId]);
+        $feePayments = $stmtFeePayments->fetchAll();
+
+        // Fetch admission & online portal payments for this child
+        $stmtAdmPayments = $this->db->prepare(
+            "SELECT * FROM payments 
+             WHERE applicant_id = ? 
+             ORDER BY created_at DESC, id DESC"
+        );
+        $stmtAdmPayments->execute([$applicantId]);
+        $admissionPayments = $stmtAdmPayments->fetchAll();
+
+        $outstanding = $this->outstandingBalance($applicantId);
+
+        $totalFeePaid = 0.0;
+        foreach ($feePayments as $fp) {
+            $totalFeePaid += (float) ($fp['amount_paid'] ?? 0);
+        }
+        foreach ($admissionPayments as $ap) {
+            if (($ap['payment_status'] ?? '') === 'Paid') {
+                $totalFeePaid += (float) ($ap['amount'] ?? 0);
+            }
+        }
+
+        render('parent/child', compact('student', 'children', 'feePayments', 'admissionPayments', 'outstanding', 'totalFeePaid'), 'parent');
     }
 
     public function attendance(): void
@@ -370,8 +404,9 @@ final class ParentController
 
         // Outstanding balance
         $outstanding = $this->outstandingBalance($applicantId);
+        $children = parent_linked_children();
 
-        render('parent/fees', compact('feeSchedule', 'outstanding', 'student', 'year', 'term'), 'parent');
+        render('parent/fees', compact('feeSchedule', 'outstanding', 'student', 'year', 'term', 'children'), 'parent');
     }
 
     public function paymentHistory(): void
@@ -397,8 +432,9 @@ final class ParentController
 
         $outstanding = $this->outstandingBalance($applicantId);
         $student = (new Applicant($this->db))->find($applicantId);
+        $children = parent_linked_children();
 
-        render('parent/payment_history', compact('payments', 'outstanding', 'student', 'year'), 'parent');
+        render('parent/payment_history', compact('payments', 'outstanding', 'student', 'year', 'children'), 'parent');
     }
 
     public function receipt(): void

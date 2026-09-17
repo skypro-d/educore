@@ -231,6 +231,10 @@ switch ($route) {
     case 'student-fees/pay-balance':
         $controller->saveBalancePayment();
         break;
+    case 'student-fees/receipt':
+    case 'fee-receipt':
+        $controller->feeReceipt();
+        break;
 
     // Attendance Management
     case 'attendance':

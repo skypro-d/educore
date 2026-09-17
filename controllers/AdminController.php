@@ -250,7 +250,41 @@ final class AdminController
         $stmtPickups->execute([$id]);
         $authorizedPickups = $stmtPickups->fetchAll();
 
-        render('admin/application_show', compact('application', 'exitLogs', 'authorizedPickups'), 'admin');
+        // Fetch term fee payments
+        $stmtFeePayments = $this->db->prepare(
+            "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year
+             FROM student_fee_payments sfp
+             LEFT JOIN fee_structures fs ON fs.id = sfp.fee_structure_id
+             WHERE sfp.applicant_id = ?
+             ORDER BY sfp.created_at DESC, sfp.id DESC"
+        );
+        $stmtFeePayments->execute([$id]);
+        $feePayments = $stmtFeePayments->fetchAll();
+
+        // Fetch admission & online portal payments
+        $stmtAdmPayments = $this->db->prepare(
+            "SELECT * FROM payments 
+             WHERE applicant_id = ? 
+             ORDER BY created_at DESC, id DESC"
+        );
+        $stmtAdmPayments->execute([$id]);
+        $admissionPayments = $stmtAdmPayments->fetchAll();
+
+        $totalFeePaid = 0.0;
+        $totalBalance = 0.0;
+        foreach ($feePayments as $fp) {
+            $totalFeePaid += (float) ($fp['amount_paid'] ?? 0);
+            $totalBalance += (float) ($fp['balance'] ?? 0);
+        }
+        foreach ($admissionPayments as $ap) {
+            if (($ap['payment_status'] ?? '') === 'Paid') {
+                $totalFeePaid += (float) ($ap['amount'] ?? 0);
+            }
+        }
+
+        render('admin/application_show', compact(
+            'application', 'exitLogs', 'authorizedPickups', 'feePayments', 'admissionPayments', 'totalFeePaid', 'totalBalance'
+        ), 'admin');
     }
 
     public function editStudent(int $id): void
@@ -1403,8 +1437,34 @@ final class AdminController
             flash('success', 'Balance payment applied and receipt notification sent to parent.');
         } else {
             flash('danger', 'Payment record not found.');
+            redirect('admin/student-fees');
         }
-        redirect('admin/student-fees');
+    }
+
+    public function feeReceipt(): void
+    {
+        require_admin();
+        $paymentId = (int) ($_GET['id'] ?? ($_GET['receipt'] ?? 0));
+        $stmt = $this->db->prepare(
+            "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year,
+                    a.id AS applicant_id, a.first_name, a.last_name, a.application_number, a.admission_number, a.parent_name, a.guardian_name,
+                    c.name AS class_name
+             FROM student_fee_payments sfp
+             JOIN fee_structures fs ON fs.id = sfp.fee_structure_id
+             JOIN applicants a ON a.id = sfp.applicant_id
+             LEFT JOIN classes c ON c.id = a.class_id
+             WHERE sfp.id = ? LIMIT 1"
+        );
+        $stmt->execute([$paymentId]);
+        $payment = $stmt->fetch();
+
+        if (!$payment) {
+            flash('danger', 'Payment receipt not found.');
+            redirect('admin/student-fees');
+        }
+
+        $backUrl = !empty($payment['applicant_id']) ? url('admin/applications/' . $payment['applicant_id']) : url('admin/student-fees');
+        render('shared/fee_receipt', compact('payment', 'backUrl'), 'none');
     }
 
     private function autoCreateParentAccount(int $applicantId): void

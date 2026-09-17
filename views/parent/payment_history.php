@@ -1,3 +1,7 @@
+<?php 
+$children = $children ?? parent_linked_children();
+$activeChildId = (int) ($student['id'] ?? 0);
+?>
 <div class="parent-topbar">
     <div class="page-title"><i class="ti ti-receipt" style="margin-right:8px;color:#0b3d91;"></i>Payment History & Receipts</div>
     <div class="topbar-actions">
@@ -8,6 +12,52 @@
 </div>
 
 <div class="parent-content">
+    <?php if (count($children) > 1): ?>
+    <!-- Multi-Children Switcher Bar -->
+    <div class="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <div class="fw-bold text-dark small text-uppercase" style="letter-spacing: 0.6px;">
+                <i class="ti ti-switch-horizontal me-1 text-primary"></i> Your Registered Children (<?= count($children) ?>)
+            </div>
+            <span class="small text-muted">Click any child to switch and view their payments</span>
+        </div>
+        <div class="row g-3">
+            <?php foreach ($children as $c): 
+                $isActive = (int)$c['id'] === $activeChildId;
+            ?>
+            <div class="col-md-6 col-lg-4">
+                <a href="<?= url('parent/switch-child?id=' . $c['id']) ?>" class="text-decoration-none">
+                    <div class="card p-3 rounded-3 h-100 transition-all border <?= $isActive ? 'border-primary shadow-sm bg-primary-subtle' : 'border-light-subtle bg-light-subtle hover-shadow' ?>" style="transition: transform .15s ease-in-out;">
+                        <div class="d-flex align-items-center gap-3">
+                            <?php if (!empty($c['passport_photo'])): ?>
+                                <img src="<?= url('uploads/' . $c['passport_photo']) ?>" alt="Photo" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #fff;">
+                            <?php else: ?>
+                                <div style="width:40px;height:40px;border-radius:50%;background:#0b3d91;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">
+                                    <?= strtoupper(substr($c['first_name'],0,1).substr($c['last_name'],0,1)) ?>
+                                </div>
+                            <?php endif; ?>
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div class="fw-bold text-dark text-truncate" style="font-size: 13.5px;">
+                                    <?= e($c['first_name'] . ' ' . $c['last_name']) ?>
+                                    <?php if ($isActive): ?>
+                                        <span class="badge bg-primary text-white ms-1" style="font-size: 10px;">Active</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="small text-muted text-truncate" style="font-size: 11.5px;"><?= e($c['class_name'] ?: 'Enrolled') ?> &bull; <?= e($c['admission_number'] ?: $c['application_number']) ?></div>
+                            </div>
+                            <?php if ($isActive): ?>
+                                <i class="ti ti-check-circle-filled text-primary fs-5"></i>
+                            <?php else: ?>
+                                <i class="ti ti-chevron-right text-muted"></i>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
     <!-- Filter Bar -->
     <div class="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
         <form method="GET" action="<?= url('parent/payment-history') ?>" class="row g-2 align-items-center">

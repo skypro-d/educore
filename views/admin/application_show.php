@@ -298,6 +298,177 @@ $documents = [
         <?php endif; ?>
     </div>
 
+    <!-- Student Payment History & Financial Records -->
+    <div class="profile-card">
+        <div class="d-flex flex-wrap justify-content-between align-items-center pb-2 mb-3 border-bottom gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <div style="width:36px; height:36px; border-radius:10px; background:#eff6ff; color:#0b3d91; display:flex; align-items:center; justify-content:center; font-size:18px;">
+                    <i class="ti ti-receipt"></i>
+                </div>
+                <div>
+                    <h6 class="fw-bold mb-0 text-dark">Payment History &amp; Financial Ledger</h6>
+                    <small class="text-muted">Itemized record of school fees, tuition, admission charges, and computer-generated receipts</small>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                    <i class="ti ti-check me-1"></i>Total Paid: ₦<?= number_format($totalFeePaid ?? 0, 2) ?>
+                </span>
+                <?php if (($totalBalance ?? 0) > 0): ?>
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1">
+                        <i class="ti ti-alert-circle me-1"></i>Balance Due: ₦<?= number_format($totalBalance, 2) ?>
+                    </span>
+                <?php else: ?>
+                    <span class="badge bg-light text-muted border px-2 py-1">
+                        <i class="ti ti-shield-check me-1"></i>Zero Balance
+                    </span>
+                <?php endif; ?>
+                <a href="<?= url('admin/student-fees') ?>" class="btn btn-sm btn-primary rounded-3 px-3 shadow-sm" style="font-size: 12px;">
+                    <i class="ti ti-plus me-1"></i> Record Payment
+                </a>
+            </div>
+        </div>
+
+        <!-- School / Term Fee Payments Table -->
+        <div class="mb-4">
+            <div class="fw-bold text-dark small text-uppercase mb-2" style="letter-spacing: 0.5px; font-size: 11.5px;">
+                <i class="ti ti-file-invoice text-primary me-1"></i> School &amp; Term Fees (<?= count($feePayments ?? []) ?>)
+            </div>
+            <?php if (!empty($feePayments)): ?>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0" style="font-size: 12.5px;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Receipt No.</th>
+                                <th>Fee Item</th>
+                                <th>Term / Session</th>
+                                <th>Method</th>
+                                <th>Date Paid</th>
+                                <th class="text-end">Amount Paid</th>
+                                <th class="text-end">Balance</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-center">Receipt</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($feePayments as $fp): 
+                                $status = $fp['payment_status'] ?? 'Paid';
+                                $badgeClass = match($status) {
+                                    'Paid', 'Manual' => 'bg-success-subtle text-success border-success-subtle',
+                                    'Partial' => 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+                                    default => 'bg-danger-subtle text-danger border-danger-subtle'
+                                };
+                            ?>
+                            <tr>
+                                <td>
+                                    <span class="font-monospace fw-bold text-primary"><?= e($fp['receipt_number'] ?: 'REC-'.$fp['id']) ?></span>
+                                    <?php if (!empty($fp['payment_reference'])): ?>
+                                        <div class="text-muted font-monospace" style="font-size: 10px;"><?= e($fp['payment_reference']) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <div class="fw-semibold text-dark"><?= e($fp['fee_name'] ?? 'School Fee') ?></div>
+                                    <?php if (!empty($fp['notes'])): ?>
+                                        <div class="text-muted small" style="font-size: 11px;"><?= e(mb_strimwidth($fp['notes'], 0, 40, '...')) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border"><?= e($fp['term'] ?? 'First') ?> Term</span>
+                                    <?php if (!empty($fp['academic_year'])): ?>
+                                        <div class="text-muted" style="font-size: 10.5px;"><?= e($fp['academic_year']) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">
+                                        <?= e(ucwords(str_replace('_', ' ', $fp['payment_method'] ?? 'cash'))) ?>
+                                    </span>
+                                </td>
+                                <td class="text-muted" style="font-size: 11.5px;">
+                                    <?= !empty($fp['payment_date']) ? date('d M Y, h:i A', strtotime($fp['payment_date'])) : date('d M Y', strtotime($fp['created_at'])) ?>
+                                </td>
+                                <td class="text-end fw-bold text-success">
+                                    ₦<?= number_format((float) $fp['amount_paid'], 2) ?>
+                                </td>
+                                <td class="text-end fw-semibold" style="color: <?= (float)$fp['balance'] > 0 ? '#dc2626' : '#16a34a' ?>;">
+                                    ₦<?= number_format((float) $fp['balance'], 2) ?>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge <?= $badgeClass ?> border px-2 py-1"><?= e($status) ?></span>
+                                </td>
+                                <td class="text-center">
+                                    <a href="<?= url('admin/student-fees/receipt?id=' . $fp['id']) ?>" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 11px;">
+                                        <i class="ti ti-printer me-1"></i> Print
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <div class="p-3 bg-light rounded-3 text-center text-muted" style="font-size: 12.5px;">
+                    <i class="ti ti-receipt-off me-1"></i> No school term fees recorded for this student yet.
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Admission & Portal Payments Table -->
+        <?php if (!empty($admissionPayments)): ?>
+        <div>
+            <div class="fw-bold text-dark small text-uppercase mb-2" style="letter-spacing: 0.5px; font-size: 11.5px;">
+                <i class="ti ti-credit-card text-primary me-1"></i> Admission &amp; Online Portal Charges (<?= count($admissionPayments) ?>)
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0" style="font-size: 12.5px;">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Reference</th>
+                            <th>Fee Purpose</th>
+                            <th>Gateway / Channel</th>
+                            <th>Date</th>
+                            <th class="text-end">Amount</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($admissionPayments as $ap): 
+                            $admStatus = $ap['payment_status'] ?? 'Pending';
+                            $admBadge = match($admStatus) {
+                                'Paid' => 'bg-success-subtle text-success border-success-subtle',
+                                'Pending' => 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+                                default => 'bg-danger-subtle text-danger border-danger-subtle'
+                            };
+                        ?>
+                        <tr>
+                            <td class="font-monospace fw-bold text-dark"><?= e($ap['transaction_reference']) ?></td>
+                            <td>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                                    <?= e(ucwords(str_replace('_', ' ', $ap['fee_type'] ?? 'Admission Fee'))) ?>
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis">
+                                    <?= e(ucfirst($ap['gateway'] ?? 'paystack')) ?>
+                                </span>
+                            </td>
+                            <td class="text-muted" style="font-size: 11.5px;">
+                                <?= !empty($ap['payment_date']) ? date('d M Y, h:i A', strtotime($ap['payment_date'])) : date('d M Y, h:i A', strtotime($ap['created_at'])) ?>
+                            </td>
+                            <td class="text-end fw-bold text-success">
+                                ₦<?= number_format((float) $ap['amount'], 2) ?>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge <?= $admBadge ?> border px-2 py-1"><?= e($admStatus) ?></span>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+
         <div class="profile-card">
             <div class="profile-section-label"><i class="ti ti-settings"></i> Actions</div>
             <a class="profile-btn profile-btn-primary" href="<?= url('admin/students/' . $application['id'] . '/edit') ?>"><i class="ti ti-edit"></i> Edit student details</a>

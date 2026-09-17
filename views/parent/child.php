@@ -138,4 +138,185 @@ $activeChildId = (int) ($s['id'] ?? 0);
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- Child Payment History & Official Receipts -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mt-4 bg-white">
+        <div class="p-3 px-4 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <div style="width:38px;height:38px;border-radius:10px;background:#f0fdf4;color:#16a34a;display:flex;align-items:center;justify-content:center;font-size:18px;">
+                    <i class="ti ti-receipt"></i>
+                </div>
+                <div>
+                    <div class="fw-bold text-dark" style="font-size: 15px;">
+                        Payment History &amp; Receipts for <?= e($s['first_name'] . ' ' . $s['last_name']) ?>
+                    </div>
+                    <div class="small text-muted">View all past term fees, admission charges, and download official receipts</div>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 fw-semibold" style="font-size: 12px;">
+                    <i class="ti ti-wallet me-1"></i> Total Paid: ₦<?= number_format($totalFeePaid ?? 0, 2) ?>
+                </span>
+                <?php if (($outstanding ?? 0) > 0): ?>
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 fw-semibold" style="font-size: 12px;">
+                        <i class="ti ti-alert-circle me-1"></i> Balance Due: ₦<?= number_format($outstanding, 2) ?>
+                    </span>
+                    <a href="<?= url('parent/fees') ?>" class="btn btn-sm btn-primary px-3 fw-semibold" style="background:#0b3d91; border-color:#0b3d91; font-size:12px;">
+                        <i class="ti ti-credit-card me-1"></i> Pay Fees
+                    </a>
+                <?php else: ?>
+                    <span class="badge bg-light text-muted border px-3 py-2 fw-semibold" style="font-size: 12px;">
+                        <i class="ti ti-shield-check me-1 text-success"></i> Fully Settled
+                    </span>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- School & Term Fee Payments Table -->
+        <div class="p-3 px-4">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="fw-bold text-dark small text-uppercase" style="letter-spacing: 0.5px; font-size: 11.5px;">
+                    <i class="ti ti-file-invoice text-primary me-1"></i> School Fee Payments (<?= count($feePayments ?? []) ?>)
+                </div>
+                <a href="<?= url('parent/payment-history') ?>" class="small text-decoration-none fw-semibold text-primary">
+                    View Full Payment Ledger &rarr;
+                </a>
+            </div>
+
+            <?php if (!empty($feePayments)): ?>
+                <div class="table-responsive rounded-3 border">
+                    <table class="table align-middle mb-0" style="font-size: 13px;">
+                        <thead style="background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">
+                            <tr>
+                                <th class="ps-3">Receipt No.</th>
+                                <th>Fee Item</th>
+                                <th>Term / Session</th>
+                                <th>Method</th>
+                                <th>Date Paid</th>
+                                <th class="text-end">Amount Paid</th>
+                                <th class="text-end">Balance</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-center pe-3">Receipt</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($feePayments as $fp): 
+                                $status = $fp['payment_status'] ?? 'Paid';
+                                $statusClass = match($status) {
+                                    'Paid', 'Manual' => 'bg-success-subtle text-success border-success-subtle',
+                                    'Partial' => 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+                                    default => 'bg-danger-subtle text-danger border-danger-subtle'
+                                };
+                            ?>
+                            <tr>
+                                <td class="ps-3">
+                                    <span class="font-monospace fw-bold text-primary"><?= e($fp['receipt_number'] ?: 'REC-'.$fp['id']) ?></span>
+                                    <?php if (!empty($fp['payment_reference'])): ?>
+                                        <div class="text-muted font-monospace" style="font-size: 10.5px;"><?= e($fp['payment_reference']) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <div class="fw-semibold text-dark"><?= e($fp['fee_name'] ?? 'School Fee') ?></div>
+                                    <?php if (!empty($fp['notes'])): ?>
+                                        <div class="text-muted small" style="font-size: 11px;"><?= e(mb_strimwidth($fp['notes'], 0, 45, '...')) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border"><?= e($fp['term'] ?? 'First') ?> Term</span>
+                                    <?php if (!empty($fp['academic_year'])): ?>
+                                        <div class="text-muted small" style="font-size: 11px;"><?= e($fp['academic_year']) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">
+                                        <?= e(ucwords(str_replace('_', ' ', $fp['payment_method'] ?? 'cash'))) ?>
+                                    </span>
+                                </td>
+                                <td class="text-muted" style="font-size: 12px;">
+                                    <?= !empty($fp['payment_date']) ? date('d M Y, h:i A', strtotime($fp['payment_date'])) : date('d M Y', strtotime($fp['created_at'])) ?>
+                                </td>
+                                <td class="text-end fw-bold text-success">
+                                    ₦<?= number_format((float) $fp['amount_paid'], 2) ?>
+                                </td>
+                                <td class="text-end fw-semibold" style="color: <?= (float)$fp['balance'] > 0 ? '#dc2626' : '#16a34a' ?>;">
+                                    ₦<?= number_format((float) $fp['balance'], 2) ?>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge <?= $statusClass ?> border px-2 py-1"><?= e($status) ?></span>
+                                </td>
+                                <td class="text-center pe-3">
+                                    <a href="<?= url('parent/receipt?id=' . $fp['id']) ?>" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold" style="font-size: 11.5px;">
+                                        <i class="ti ti-download me-1"></i> Receipt
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <div class="p-4 bg-light rounded-3 text-center text-muted" style="font-size: 13px;">
+                    <i class="ti ti-receipt-off fs-3 d-block mb-1 text-secondary opacity-50"></i>
+                    No school term fee payments recorded for <?= e($s['first_name']) ?> yet.
+                </div>
+            <?php endif; ?>
+
+            <!-- Admission / Portal Payments (if any) -->
+            <?php if (!empty($admissionPayments)): ?>
+            <div class="mt-4">
+                <div class="fw-bold text-dark small text-uppercase mb-2" style="letter-spacing: 0.5px; font-size: 11.5px;">
+                    <i class="ti ti-credit-card text-primary me-1"></i> Admission &amp; Portal Payments (<?= count($admissionPayments) ?>)
+                </div>
+                <div class="table-responsive rounded-3 border">
+                    <table class="table align-middle mb-0" style="font-size: 13px;">
+                        <thead style="background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">
+                            <tr>
+                                <th class="ps-3">Reference</th>
+                                <th>Fee Purpose</th>
+                                <th>Channel</th>
+                                <th>Date Paid</th>
+                                <th class="text-end">Amount</th>
+                                <th class="text-center pe-3">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($admissionPayments as $ap): 
+                                $admStatus = $ap['payment_status'] ?? 'Pending';
+                                $admBadge = match($admStatus) {
+                                    'Paid' => 'bg-success-subtle text-success border-success-subtle',
+                                    'Pending' => 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+                                    default => 'bg-danger-subtle text-danger border-danger-subtle'
+                                };
+                            ?>
+                            <tr>
+                                <td class="ps-3 font-monospace fw-bold text-dark"><?= e($ap['transaction_reference']) ?></td>
+                                <td>
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                                        <?= e(ucwords(str_replace('_', ' ', $ap['fee_type'] ?? 'Admission Fee'))) ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">
+                                        <?= e(ucfirst($ap['gateway'] ?? 'paystack')) ?>
+                                    </span>
+                                </td>
+                                <td class="text-muted" style="font-size: 12px;">
+                                    <?= !empty($ap['payment_date']) ? date('d M Y, h:i A', strtotime($ap['payment_date'])) : date('d M Y, h:i A', strtotime($ap['created_at'])) ?>
+                                </td>
+                                <td class="text-end fw-bold text-success">
+                                    ₦<?= number_format((float) $ap['amount'], 2) ?>
+                                </td>
+                                <td class="text-center pe-3">
+                                    <span class="badge <?= $admBadge ?> border px-2 py-1"><?= e($admStatus) ?></span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
 </div>
+
