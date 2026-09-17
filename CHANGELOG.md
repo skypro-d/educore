@@ -2,6 +2,14 @@
 
 All notable changes to the EduCore project are documented here. This project adheres to Semantic Versioning.
 
+## [1.0.16] - 2026-09-17
+
+### Added
+- **Child Profile Payment History (Admin Portal)**: Itemized ledger of all school term fees and admission charges directly inside `admin/applications/{id}` (`application_show.php`), including payment methods, transaction references, amounts paid, outstanding balances, and status badges.
+- **Child Profile Payment History (Parent Portal)**: Itemized payment history section with official receipt download links on the child profile page (`parent/child`).
+- **Official Fee Receipt Generation for Admins**: Added `feeReceipt()` endpoint in `AdminController` (`admin/student-fees/receipt?id=X`) allowing staff and administrators to generate and print computer-generated receipts with school branding.
+- **Multi-Child Switcher Integration**: Integrated multi-child switching across `parent/child`, `parent/fees`, and `parent/payment-history` for parents with multiple registered children.
+
 ---
 
 ## [2.1.0] - 2026-07-04
