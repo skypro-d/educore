@@ -2,6 +2,16 @@
 
 All notable changes to the EduCore project are documented here. This project adheres to Semantic Versioning.
 
+## [1.0.18] - 2026-09-18
+
+### Fixed
+- **Applicant Search PDO HY093 Error**: Resolved `SQLSTATE[HY093]: Invalid parameter number` in `Applicant::all()` by replacing repeated `:q` named parameters with distinct parameter placeholders (`:q1`, `:q2`, `:q3`, `:q4`, `:q5`) for native PDO prepared statement compatibility.
+
+### Changed
+- **Default Student Portal Password**: Configured default student portal account passwords during direct/batch enrollment and admission approval to automatically use the student's lowercase surname.
+
+---
+
 ## [1.0.16] - 2026-09-17
 
 ### Added

@@ -68,8 +68,13 @@ final class Applicant
         $where = [];
         $params = [];
         if (!empty($filters['q'])) {
-            $where[] = "(a.application_number LIKE :q OR a.admission_number LIKE :q OR a.first_name LIKE :q OR a.last_name LIKE :q OR a.parent_phone LIKE :q)";
-            $params['q'] = '%' . $filters['q'] . '%';
+            $where[] = "(a.application_number LIKE :q1 OR a.admission_number LIKE :q2 OR a.first_name LIKE :q3 OR a.last_name LIKE :q4 OR a.parent_phone LIKE :q5)";
+            $qVal = '%' . $filters['q'] . '%';
+            $params['q1'] = $qVal;
+            $params['q2'] = $qVal;
+            $params['q3'] = $qVal;
+            $params['q4'] = $qVal;
+            $params['q5'] = $qVal;
         }
         if (!empty($filters['class_id'])) {
             $where[] = "a.class_id = :class_id";
