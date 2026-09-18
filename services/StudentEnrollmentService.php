@@ -122,8 +122,9 @@ final class StudentEnrollmentService
         // Generate application number using standard school numbering format (matches online admissions)
         $applicationNumber = generate_application_number($this->db);
 
-        // Passwords (use custom if provided, otherwise auto-generate secure temp password)
-        $studentPass = trim((string) ($data['student_password'] ?? '')) ?: generate_temp_password();
+        // Passwords (use custom if provided, otherwise default student password to lowercase surname)
+        $defaultStudentPass = $lastName !== '' ? strtolower(trim($lastName)) : generate_temp_password();
+        $studentPass = trim((string) ($data['student_password'] ?? '')) ?: $defaultStudentPass;
         $parentPass = trim((string) ($data['parent_password'] ?? '')) ?: generate_temp_password();
         $studentHash = password_hash($studentPass, PASSWORD_BCRYPT);
         $parentHash = password_hash($parentPass, PASSWORD_BCRYPT);

@@ -648,8 +648,9 @@ final class AdminController
 
             // 2. Generate Student Username / Student ID: GF-STD-2026-023
             $studentUsername = $schoolCode . "-STD-" . $year . "-" . $serial;
-            // 3. Generate random student password and hash it
-            $studentPass = generate_temp_password();
+            // 3. Set student default password (student surname/last_name, lowercase) and hash it
+            $lastNameClean = strtolower(trim((string) ($app['last_name'] ?? '')));
+            $studentPass = $lastNameClean !== '' ? $lastNameClean : generate_temp_password();
             $studentHash = password_hash($studentPass, PASSWORD_BCRYPT);
 
             // 4. Generate random parent password and hash it
