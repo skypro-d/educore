@@ -37,9 +37,17 @@ $documents = [
 <div class="profile-page">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <a class="profile-back mb-0" href="<?= url('admin/applications') ?>"><i class="ti ti-arrow-left"></i> Back to students</a>
-        <a class="btn btn-sm btn-primary rounded-3 px-3 shadow-sm" href="<?= url('admin/students/' . $application['id'] . '/edit') ?>">
-            <i class="ti ti-edit me-1"></i> Edit Student Details
-        </a>
+        <div class="d-flex gap-2">
+            <form method="POST" action="<?= url('admin/students/' . $application['id'] . '/reset-password') ?>" onsubmit="return confirm('Reset student portal password to surname (<?= e(strtolower($application['last_name'])) ?>)?');" class="d-inline">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-sm btn-outline-warning rounded-3 px-3 shadow-sm text-dark">
+                    <i class="ti ti-key me-1"></i> Reset Password to Surname
+                </button>
+            </form>
+            <a class="btn btn-sm btn-primary rounded-3 px-3 shadow-sm" href="<?= url('admin/students/' . $application['id'] . '/edit') ?>">
+                <i class="ti ti-edit me-1"></i> Edit Student Details
+            </a>
+        </div>
     </div>
 
     <div class="profile-card">

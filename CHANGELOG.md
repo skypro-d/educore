@@ -9,6 +9,8 @@ All notable changes to the EduCore project are documented here. This project adh
 
 ### Changed
 - **Default Student Portal Password**: Configured default student portal account passwords during direct/batch enrollment and admission approval to automatically use the student's lowercase surname.
+- **Existing Student Passwords Migration (Migration 013)**: Added database migration `013_set_existing_student_passwords_to_surname.php` that iterates through all existing student accounts and updates their passwords to their respective lowercase surnames.
+- **Admin Password Reset Tools**: Added individual "Reset Password to Surname" and bulk "Reset Passwords to Surname" actions in the Admin portal.
 
 ---
 

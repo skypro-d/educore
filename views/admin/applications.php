@@ -4,6 +4,12 @@
         <p class="text-muted small mb-0"><?= ($filters['status'] === 'Enrolled') ? 'Manage all enrolled students, credentials, and digital ID cards.' : 'Review online admissions, schedule interviews, and process enrollments.' ?></p>
     </div>
     <div class="d-flex align-items-center gap-2">
+        <form method="POST" action="<?= url('admin/students/reset-all-passwords') ?>" onsubmit="return confirm('Reset ALL student portal passwords to their respective last names (lowercase)?');" class="d-inline">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn-outline-warning btn-sm rounded-3 shadow-sm text-dark" title="Reset all student portal passwords to student surname">
+                <i class="ti ti-key me-1"></i> Reset Passwords to Surname
+            </button>
+        </form>
         <a class="btn btn-outline-primary btn-sm rounded-3 shadow-sm" href="<?= url('admin/export') ?>"><i class="ti ti-file-export me-1"></i> Export</a>
         <a class="btn btn-outline-secondary btn-sm rounded-3 shadow-sm" href="<?= url('admin/students/sample-csv') ?>"><i class="ti ti-download me-1"></i> CSV Template</a>
         <a class="btn btn-primary btn-sm rounded-3 shadow-sm" href="<?= url('admin/students/enrol') ?>"><i class="ti ti-user-plus me-1"></i> Direct Enrollment</a>

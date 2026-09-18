@@ -21,6 +21,16 @@ if (preg_match('#^(?:applications|students)/(\d+)/delete$#', $route, $m)) {
     $controller->deleteStudent((int) $m[1]);
     exit;
 }
+if (preg_match('#^(?:applications|students)/(\d+)/reset-password$#', $route, $m)) {
+    require_post();
+    $controller->resetStudentPassword((int) $m[1]);
+    exit;
+}
+if ($route === 'students/reset-all-passwords' || $route === 'applications/reset-all-passwords') {
+    require_post();
+    $controller->resetAllStudentPasswords();
+    exit;
+}
 if (preg_match('#^applications/(\d+)$#', $route, $m)) {
     $controller->showApplication((int) $m[1]);
     exit;

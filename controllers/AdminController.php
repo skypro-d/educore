@@ -594,6 +594,85 @@ final class AdminController
         redirect('admin/applications');
     }
 
+    public function resetStudentPassword(int $id): void
+    {
+        require_permission('applications');
+        verify_csrf();
+
+        $applicant = (new Applicant($this->db))->find($id);
+        if (!$applicant) {
+            flash('danger', 'Student record not found.');
+            redirect('admin/applications');
+            return;
+        }
+
+        $lastName = trim((string) ($applicant['last_name'] ?? ''));
+        $tempPass = $lastName !== '' ? strtolower($lastName) : 'student123';
+        $hash = password_hash($tempPass, PASSWORD_BCRYPT);
+        $username = trim((string) ($applicant['student_username'] ?? ''));
+
+        // Check if student_accounts record exists
+        $stmt = $this->db->prepare("SELECT id, username FROM student_accounts WHERE applicant_id = ? LIMIT 1");
+        $stmt->execute([$id]);
+        $studAcc = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($studAcc) {
+            $this->db->prepare(
+                "UPDATE student_accounts SET password_hash = ?, reset_token = NULL, reset_expires = NULL, must_change_password = 0 WHERE id = ?"
+            )->execute([$hash, $studAcc['id']]);
+            $username = $studAcc['username'];
+        } else {
+            if ($username === '') {
+                $username = $applicant['admission_number'] ?: ('STD-' . $id);
+            }
+            $this->db->prepare(
+                "INSERT INTO student_accounts (applicant_id, username, password_hash, must_change_password) VALUES (?, ?, ?, 0)"
+            )->execute([$id, $username, $hash]);
+        }
+
+        try {
+            (new ActivityLog($this->db))->record('student_password_reset', "Reset student portal password for applicant #{$id} ({$applicant['first_name']} {$applicant['last_name']}) to surname ({$tempPass})");
+        } catch (Throwable) {}
+
+        flash('success', "Student portal password for <strong>" . e($applicant['first_name'] . ' ' . $applicant['last_name']) . "</strong> has been reset to surname: <strong class=\"font-monospace\">" . e($tempPass) . "</strong>");
+        redirect('admin/applications/' . $id);
+    }
+
+    public function resetAllStudentPasswords(): void
+    {
+        require_permission('applications');
+        verify_csrf();
+
+        $stmt = $this->db->query("
+            SELECT sa.id AS account_id, sa.applicant_id, a.first_name, a.last_name, sa.username
+            FROM student_accounts sa
+            JOIN applicants a ON a.id = sa.applicant_id
+        ");
+        $accounts = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        $updateStmt = $this->db->prepare("
+            UPDATE student_accounts 
+            SET password_hash = ?, reset_token = NULL, reset_expires = NULL, must_change_password = 0
+            WHERE id = ?
+        ");
+
+        $count = 0;
+        foreach ($accounts as $acc) {
+            $lastName = trim((string) ($acc['last_name'] ?? ''));
+            $pass = $lastName !== '' ? strtolower($lastName) : 'student123';
+            $hash = password_hash($pass, PASSWORD_BCRYPT);
+            $updateStmt->execute([$hash, $acc['account_id']]);
+            $count++;
+        }
+
+        try {
+            (new ActivityLog($this->db))->record('bulk_student_password_reset', "Reset passwords for {$count} student portal accounts to their respective surnames");
+        } catch (Throwable) {}
+
+        flash('success', "Successfully reset passwords for <strong>{$count}</strong> student portal accounts to their respective surnames (lowercase).");
+        redirect('admin/applications');
+    }
+
     public function updateStatus(int $id, string $status): void
     {
         require_admin();

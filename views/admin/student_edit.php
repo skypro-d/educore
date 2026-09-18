@@ -22,6 +22,12 @@ $fullName = trim($application['first_name'] . ' ' . ($application['middle_name']
             <p class="text-muted small mb-0">Update profile, class placement, student admission credentials, and parent contact info.</p>
         </div>
         <div class="d-flex align-items-center gap-2">
+            <form method="POST" action="<?= url('admin/students/' . $application['id'] . '/reset-password') ?>" onsubmit="return confirm('Reset student portal password to surname (<?= e(strtolower($application['last_name'])) ?>)?');" class="d-inline">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-outline-warning btn-sm px-3 rounded-3 shadow-sm text-dark">
+                    <i class="ti ti-key me-1"></i> Reset Password to Surname
+                </button>
+            </form>
             <a href="<?= url('admin/applications/' . $application['id']) ?>" class="btn btn-outline-secondary btn-sm px-3 rounded-3 shadow-sm">
                 <i class="ti ti-arrow-left me-1"></i> Back to Profile
             </a>
