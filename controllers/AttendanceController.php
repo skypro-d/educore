@@ -36,7 +36,7 @@ final class AttendanceController
             $students = $stmt->fetchAll();
 
             $stmt2 = $this->db->prepare(
-                "SELECT applicant_id, status, remark, time_in FROM attendance WHERE class_id=? AND date=?"
+                "SELECT applicant_id, status, remark, time_in, time_out FROM attendance WHERE class_id=? AND date=?"
             );
             $stmt2->execute([$classId, $date]);
             foreach ($stmt2->fetchAll() as $row) {
@@ -229,6 +229,417 @@ final class AttendanceController
         }
 
         redirect('admin/attendance-settings#tab-auto-absent');
+    }
+
+    /**
+     * HIPPOINT X7-1000 USB QR Attendance Kiosk Scanner Page
+     */
+    public function scanner(): void
+    {
+        require_admin();
+        $today = date('Y-m-d');
+        $schoolId = SchoolContext::id() ?? 1;
+
+        // Fetch today's summary stats
+        $statsStmt = $this->db->prepare(
+            "SELECT
+                COUNT(DISTINCT a.id) as total_students,
+                SUM(CASE WHEN att.id IS NOT NULL AND att.status IN ('Present', 'Late') THEN 1 ELSE 0 END) as checked_in,
+                SUM(CASE WHEN att.id IS NOT NULL AND att.time_out IS NOT NULL THEN 1 ELSE 0 END) as checked_out,
+                SUM(CASE WHEN att.status = 'Late' THEN 1 ELSE 0 END) as late_count
+             FROM applicants a
+             LEFT JOIN attendance att ON att.applicant_id = a.id AND att.date = ?
+             WHERE a.status = 'Enrolled' AND (a.student_status IS NULL OR a.student_status = 'Active')"
+        );
+        $statsStmt->execute([$today]);
+        $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: [
+            'total_students' => 0,
+            'checked_in'     => 0,
+            'checked_out'    => 0,
+            'late_count'     => 0,
+        ];
+        $stats['on_campus'] = max(0, ((int)$stats['checked_in']) - ((int)$stats['checked_out']));
+
+        // Recent 10 scans today
+        $recentStmt = $this->db->prepare(
+            "SELECT att.id as attendance_id, att.applicant_id, att.time_in, att.time_out, att.status, att.scan_method,
+                    s.first_name, s.last_name, s.admission_number, s.application_number, s.passport_photo,
+                    c.name as class_name
+             FROM attendance att
+             JOIN applicants s ON s.id = att.applicant_id
+             LEFT JOIN classes c ON c.id = s.class_id
+             WHERE att.date = ?
+             ORDER BY GREATEST(
+                 COALESCE(att.time_out, '00:00:00'),
+                 COALESCE(att.time_in, '00:00:00')
+             ) DESC, att.id DESC
+             LIMIT 10"
+        );
+        $recentStmt->execute([$today]);
+        $recentScans = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch a few enrolled students for live testing & QR preview
+        $sampleStudentsStmt = $this->db->prepare(
+            "SELECT a.id, a.first_name, a.last_name, a.admission_number, a.qr_data, c.name as class_name
+             FROM applicants a
+             LEFT JOIN classes c ON c.id = a.class_id
+             WHERE a.status = 'Enrolled' AND (a.student_status IS NULL OR a.student_status = 'Active')
+             ORDER BY a.id ASC
+             LIMIT 4"
+        );
+        $sampleStudentsStmt->execute();
+        $sampleStudents = $sampleStudentsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $debounceMins = (int) setting('attendance_debounce_minutes', 15);
+        $autoResetSeconds = (int) setting('attendance_scanner_auto_reset_seconds', 3);
+
+        render('admin/attendance_scanner', compact('stats', 'recentScans', 'sampleStudents', 'today', 'debounceMins', 'autoResetSeconds'), 'admin');
+    }
+
+    /**
+     * AJAX endpoint for HIPPOINT X7-1000 USB Scanner
+     * Processes QR code scans, handles automatic IN/OUT transitions and duplicate scan protection
+     */
+    public function processScanAjax(): void
+    {
+        require_admin();
+        header('Content-Type: application/json; charset=utf-8');
+
+        $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $rawCode = trim($input['qr_data'] ?? $input['token'] ?? '');
+
+        if ($rawCode === '') {
+            echo json_encode([
+                'success'      => false,
+                'action'       => 'error',
+                'badge_status' => 'danger',
+                'title'        => 'No Input',
+                'message'      => 'No QR code received from scanner.'
+            ]);
+            exit;
+        }
+
+        // Extract token if URL or mangled keyboard layout URL was scanned
+        $token = trim($rawCode);
+        if (preg_match('/[?&_\-\^]token[=0\):]([^\s&#\^?]+?)(?:http|$)/i', $rawCode, $matches)) {
+            $token = urldecode(rtrim($matches[1], '/'));
+        } elseif (preg_match('/[?&]token=([^&#\s]+)/i', $rawCode, $matches)) {
+            $token = urldecode(rtrim($matches[1], '/'));
+        }
+
+        $token = trim($token);
+        $normalizedToken = str_replace('/', '-', $token);
+
+        // 1. Locate student by qr_data, normalized qr_data, admission number, or application number
+        $stmt = $this->db->prepare(
+            "SELECT a.*, c.name AS class_name
+             FROM applicants a
+             LEFT JOIN classes c ON c.id = a.class_id
+             WHERE (a.qr_data = ? OR a.qr_data = ? OR a.admission_number = ? OR a.application_number = ?)
+             LIMIT 1"
+        );
+        $stmt->execute([$token, $normalizedToken, $token, $token]);
+        $student = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Fallback A: Match by student ID from attendance token pattern (e.g. ATTENDANCE-STD-8845 or attendance/std/8845)
+        if (!$student && preg_match('/attendance[-_\/]std[-_\/](\d+)/i', $rawCode, $m)) {
+            $studentId = (int)$m[1];
+            $stmtId = $this->db->prepare(
+                "SELECT a.*, c.name AS class_name
+                 FROM applicants a
+                 LEFT JOIN classes c ON c.id = a.class_id
+                 WHERE a.id = ? LIMIT 1"
+            );
+            $stmtId->execute([$studentId]);
+            $student = $stmtId->fetch(PDO::FETCH_ASSOC);
+        }
+
+        // Fallback B: If token is directly an integer ID
+        if (!$student && ctype_digit($token)) {
+            $stmtId = $this->db->prepare(
+                "SELECT a.*, c.name AS class_name
+                 FROM applicants a
+                 LEFT JOIN classes c ON c.id = a.class_id
+                 WHERE a.id = ? LIMIT 1"
+            );
+            $stmtId->execute([(int)$token]);
+            $student = $stmtId->fetch(PDO::FETCH_ASSOC);
+        }
+
+        // Student existence check
+        if (!$student) {
+            echo json_encode([
+                'success'      => false,
+                'action'       => 'not_found',
+                'badge_status' => 'danger',
+                'title'        => 'Student Not Found',
+                'message'      => 'Unrecognized QR code or token. Not registered in system.',
+                'raw_code'     => $rawCode
+            ]);
+            exit;
+        }
+
+        // Multi-tenant school isolation check
+        $currentSchoolId = SchoolContext::id();
+        if ($currentSchoolId !== null && (int)$student['school_id'] !== (int)$currentSchoolId) {
+            echo json_encode([
+                'success'      => false,
+                'action'       => 'cross_school_denied',
+                'badge_status' => 'danger',
+                'title'        => 'Cross-School Access Denied',
+                'message'      => 'This QR code belongs to a student from another school.'
+            ]);
+            exit;
+        }
+
+        // Enrollment & Active status check
+        if ($student['status'] !== 'Enrolled' || (!empty($student['student_status']) && $student['student_status'] !== 'Active')) {
+            $statusLabel = $student['status'] !== 'Enrolled' ? $student['status'] : ($student['student_status'] ?? 'Inactive');
+            echo json_encode([
+                'success'      => false,
+                'action'       => 'inactive_student',
+                'badge_status' => 'danger',
+                'title'        => 'Student Inactive',
+                'message'      => "Student {$student['first_name']} {$student['last_name']} is currently {$statusLabel}.",
+                'student'      => [
+                    'id'               => (int) $student['id'],
+                    'name'             => trim($student['first_name'] . ' ' . $student['last_name']),
+                    'admission_number' => $student['admission_number'] ?: $student['application_number'],
+                    'class_name'       => $student['class_name'] ?: 'N/A',
+                    'photo'            => !empty($student['passport_photo']) ? url('uploads/' . $student['passport_photo']) : null
+                ]
+            ]);
+            exit;
+        }
+
+        $studentId = (int) $student['id'];
+        $classId   = (int) ($student['class_id'] ?? 0);
+        $schoolId  = (int) ($student['school_id'] ?? 1);
+        $today     = date('Y-m-d');
+        $nowTime   = date('H:i:s');
+        $adminId   = (int) ($_SESSION['admin']['id'] ?? 0);
+        $debounceMins = (int) setting('attendance_debounce_minutes', 15);
+        if ($debounceMins < 1) $debounceMins = 1;
+
+        $studentName = trim($student['first_name'] . ' ' . $student['last_name']);
+        $studentInfo = [
+            'id'               => $studentId,
+            'name'             => $studentName,
+            'first_name'       => $student['first_name'],
+            'last_name'        => $student['last_name'],
+            'admission_number' => $student['admission_number'] ?: $student['application_number'],
+            'class_name'       => $student['class_name'] ?: 'N/A',
+            'photo'            => !empty($student['passport_photo']) ? url('uploads/' . $student['passport_photo']) : null,
+            'parent_phone'     => mask_phone($student['parent_phone'] ?? ''),
+        ];
+
+        // Check today's attendance record
+        $chkStmt = $this->db->prepare(
+            "SELECT id, applicant_id, class_id, time_in, time_out, status, alert_sent, timeout_alert_sent
+             FROM attendance
+             WHERE applicant_id = ? AND date = ?
+             LIMIT 1"
+        );
+        $chkStmt->execute([$studentId, $today]);
+        $existing = $chkStmt->fetch(PDO::FETCH_ASSOC);
+
+        // ── CASE 1: No attendance record today → Record CHECK-IN ──
+        if (!$existing) {
+            $resolvedStatus = AttendanceRules::resolveCurrentStatus();
+            $isDenied = ($resolvedStatus === 'Denied');
+
+            if ($isDenied) {
+                $allowLateAfterClose = (bool) (int) setting('attendance_allow_late_after_close', 1);
+                if (!$allowLateAfterClose) {
+                    echo json_encode([
+                        'success'      => false,
+                        'action'       => 'denied',
+                        'badge_status' => 'danger',
+                        'title'        => 'Scan Denied (Window Closed)',
+                        'message'      => "Attendance window is closed for today ({$nowTime}). Entry denied.",
+                        'time'         => date('g:i A', strtotime($nowTime)),
+                        'student'      => $studentInfo
+                    ]);
+                    exit;
+                }
+                $resolvedStatus = 'Late';
+            }
+
+            $this->db->beginTransaction();
+            try {
+                $ins = $this->db->prepare(
+                    "INSERT INTO attendance (applicant_id, class_id, school_id, date, time_in, status, scan_method, alert_sent, marked_by, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, 'qr_usb', 0, ?, NOW())"
+                );
+                $ins->execute([$studentId, $classId, $schoolId, $today, $nowTime, $resolvedStatus, $adminId ?: null]);
+                $attendanceId = (int) $this->db->lastInsertId();
+                $this->db->commit();
+            } catch (Throwable $e) {
+                $this->db->rollBack();
+                echo json_encode([
+                    'success'      => false,
+                    'action'       => 'error',
+                    'badge_status' => 'danger',
+                    'title'        => 'Database Error',
+                    'message'      => 'Failed to save attendance: ' . $e->getMessage()
+                ]);
+                exit;
+            }
+
+            // Dispatch Check-in Notification asynchronously
+            AttendanceService::dispatchCheckinNotification($student, $nowTime, $resolvedStatus, $attendanceId);
+
+            echo json_encode([
+                'success'      => true,
+                'action'       => 'check_in',
+                'badge_status' => 'success',
+                'title'        => 'CHECK-IN RECORDED',
+                'message'      => "Welcome, {$studentName}! Marked as {$resolvedStatus}.",
+                'status'       => $resolvedStatus,
+                'time'         => date('g:i A', strtotime($nowTime)),
+                'student'      => $studentInfo
+            ]);
+            exit;
+        }
+
+        // ── CASE 2: Record exists, but time_out IS NULL ──
+        if (empty($existing['time_out'])) {
+            $timeInSeconds = strtotime($today . ' ' . $existing['time_in']);
+            $nowSeconds    = time();
+            $diffMinutes   = (int) round(($nowSeconds - $timeInSeconds) / 60);
+
+            // Subcase 2A: Within debounce window → Duplicate check-in attempt
+            if ($diffMinutes < $debounceMins) {
+                echo json_encode([
+                    'success'      => false,
+                    'action'       => 'duplicate_in',
+                    'badge_status' => 'warning',
+                    'title'        => 'ALREADY CHECKED IN',
+                    'message'      => "{$studentName} already checked in at " . date('g:i A', $timeInSeconds) . " ({$diffMinutes} min ago). Duplicate scan ignored.",
+                    'status'       => $existing['status'],
+                    'time'         => date('g:i A', $timeInSeconds),
+                    'student'      => $studentInfo
+                ]);
+                exit;
+            }
+
+            // Subcase 2B: Outside debounce window → Record CHECK-OUT
+            $this->db->beginTransaction();
+            try {
+                $upd = $this->db->prepare(
+                    "UPDATE attendance
+                     SET time_out = ?, scan_method = 'qr_usb'
+                     WHERE id = ?"
+                );
+                $upd->execute([$nowTime, $existing['id']]);
+                $this->db->commit();
+            } catch (Throwable $e) {
+                $this->db->rollBack();
+                echo json_encode([
+                    'success'      => false,
+                    'action'       => 'error',
+                    'badge_status' => 'danger',
+                    'title'        => 'Database Error',
+                    'message'      => 'Failed to update check-out: ' . $e->getMessage()
+                ]);
+                exit;
+            }
+
+            // Dispatch Check-out Notification asynchronously
+            if ((int) setting('attendance_checkout_sms_enabled', 1) || (int) setting('attendance_checkout_email_enabled', 1)) {
+                $exitData = [
+                    'exit_date'          => $today,
+                    'exit_time'          => $nowTime,
+                    'exit_type'          => 'normal',
+                    'exit_reason'        => 'School Departure',
+                    'pickup_person_name' => 'Self / Guardian'
+                ];
+                AttendanceService::dispatchCheckoutNotification($student, $exitData, (int)$existing['id']);
+            }
+
+            echo json_encode([
+                'success'      => true,
+                'action'       => 'check_out',
+                'badge_status' => 'primary',
+                'title'        => 'CHECK-OUT RECORDED',
+                'message'      => "Goodbye, {$studentName}! Departure logged at " . date('g:i A', strtotime($nowTime)) . ".",
+                'status'       => 'Checked Out',
+                'time'         => date('g:i A', strtotime($nowTime)),
+                'student'      => $studentInfo
+            ]);
+            exit;
+        }
+
+        // ── CASE 3: Record exists and time_out IS ALREADY RECORDED ──
+        $timeOutSeconds = strtotime($today . ' ' . $existing['time_out']);
+        echo json_encode([
+            'success'      => false,
+            'action'       => 'duplicate_out',
+            'badge_status' => 'warning',
+            'title'        => 'ALREADY CHECKED OUT',
+            'message'      => "{$studentName} already checked out today at " . date('g:i A', $timeOutSeconds) . ". No further scan required.",
+            'status'       => 'Checked Out',
+            'time'         => date('g:i A', $timeOutSeconds),
+            'student'      => $studentInfo
+        ]);
+        exit;
+    }
+
+    /**
+     * AJAX polling endpoint to refresh stats and recent scan feed
+     */
+    public function recentScansAjax(): void
+    {
+        require_admin();
+        header('Content-Type: application/json; charset=utf-8');
+        $today = date('Y-m-d');
+
+        $statsStmt = $this->db->prepare(
+            "SELECT
+                COUNT(DISTINCT a.id) as total_students,
+                SUM(CASE WHEN att.id IS NOT NULL AND att.status IN ('Present', 'Late') THEN 1 ELSE 0 END) as checked_in,
+                SUM(CASE WHEN att.id IS NOT NULL AND att.time_out IS NOT NULL THEN 1 ELSE 0 END) as checked_out,
+                SUM(CASE WHEN att.status = 'Late' THEN 1 ELSE 0 END) as late_count
+             FROM applicants a
+             LEFT JOIN attendance att ON att.applicant_id = a.id AND att.date = ?
+             WHERE a.status = 'Enrolled' AND (a.student_status IS NULL OR a.student_status = 'Active')"
+        );
+        $statsStmt->execute([$today]);
+        $stats = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: [
+            'total_students' => 0, 'checked_in' => 0, 'checked_out' => 0, 'late_count' => 0
+        ];
+        $stats['on_campus'] = max(0, ((int)$stats['checked_in']) - ((int)$stats['checked_out']));
+
+        $recentStmt = $this->db->prepare(
+            "SELECT att.id as attendance_id, att.applicant_id, att.time_in, att.time_out, att.status, att.scan_method,
+                    s.first_name, s.last_name, s.admission_number, s.application_number, s.passport_photo,
+                    c.name as class_name
+             FROM attendance att
+             JOIN applicants s ON s.id = att.applicant_id
+             LEFT JOIN classes c ON c.id = s.class_id
+             WHERE att.date = ?
+             ORDER BY GREATEST(
+                 COALESCE(att.time_out, '00:00:00'),
+                 COALESCE(att.time_in, '00:00:00')
+             ) DESC, att.id DESC
+             LIMIT 10"
+        );
+        $recentStmt->execute([$today]);
+        $recentScans = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($recentScans as &$r) {
+            $r['name'] = trim($r['first_name'] . ' ' . $r['last_name']);
+            $r['formatted_time'] = !empty($r['time_out']) ? date('g:i A', strtotime($r['time_out'])) : (!empty($r['time_in']) ? date('g:i A', strtotime($r['time_in'])) : '—');
+            $r['scan_type'] = !empty($r['time_out']) ? 'OUT' : 'IN';
+            $r['photo_url'] = !empty($r['passport_photo']) ? url('uploads/' . $r['passport_photo']) : null;
+        }
+
+        echo json_encode([
+            'success'     => true,
+            'stats'       => $stats,
+            'recentScans' => $recentScans
+        ]);
+        exit;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

@@ -78,6 +78,9 @@ $activeTab = $_GET['tab'] ?? 'time-rules';
     <button class="att-settings-tab <?= $activeTab==='exit' ? 'active' : '' ?>" data-tab="exit" type="button">
         <i class="ti ti-door-exit"></i> Exit &amp; Dismissal
     </button>
+    <button class="att-settings-tab <?= $activeTab==='scanner' ? 'active' : '' ?>" data-tab="scanner" type="button">
+        <i class="ti ti-qrcode"></i> USB Scanner &amp; IN/OUT
+    </button>
     <button class="att-settings-tab <?= $activeTab==='logs' ? 'active' : '' ?>" data-tab="logs" type="button">
         <i class="ti ti-list-details"></i> SMS Logs
         <?php
@@ -827,6 +830,95 @@ Thank you.</div>
         <div style="display:flex;gap:12px;margin-top:20px;">
             <button type="submit" class="sa-btn sa-btn-primary">
                 <i class="ti ti-device-floppy"></i> Save Exit &amp; Dismissal Settings
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- TAB: USB SCANNER & IN/OUT SETTINGS                      -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="att-tab-panel <?= $activeTab==='scanner' ? 'active' : '' ?>" id="tab-scanner">
+    <form method="POST" action="<?= url('admin/attendance-settings') ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="section" value="scanner">
+
+        <div class="sa-card" style="margin-bottom:20px;">
+            <div class="sa-card-title d-flex justify-content-between align-items-center">
+                <span><i class="ti ti-scan"></i> HIPPOINT X7-1000 USB Scanner Configuration</span>
+                <a href="<?= url('admin/attendance-scanner') ?>" class="sa-btn sa-btn-primary" style="font-size:12px;">
+                    <i class="ti ti-external-link"></i> Launch Scanner Terminal
+                </a>
+            </div>
+            <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">
+                Configure automatic check-in/check-out toggles, accidental double-scan debounce thresholds, and terminal behavior.
+            </p>
+
+            <div class="sms-toggle">
+                <div class="toggle-label">
+                    <strong>Automatic IN/OUT Mode</strong>
+                    <span>When enabled, the scanner records the 1st scan as Check-In and subsequent scan (after debounce threshold) as Check-Out automatically.</span>
+                </div>
+                <label class="sms-switch">
+                    <input type="checkbox" name="settings[attendance_auto_toggle_inout]" value="1" <?= ($map['attendance_auto_toggle_inout'] ?? '1') === '1' ? 'checked' : '' ?>>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold small text-dark">Debounce Protection Threshold (Minutes)</label>
+                    <input type="number" min="1" max="180" class="form-control" name="settings[attendance_debounce_minutes]" value="<?= e($map['attendance_debounce_minutes'] ?? '15') ?>">
+                    <div class="form-text text-muted" style="font-size: 11px;">
+                        Scans within this many minutes of check-in are rejected as duplicates (default: 15 mins). Scans after this window record check-out.
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label fw-bold small text-dark">Terminal Auto-Reset Delay (Seconds)</label>
+                    <input type="number" min="1" max="10" class="form-control" name="settings[attendance_scanner_auto_reset_seconds]" value="<?= e($map['attendance_scanner_auto_reset_seconds'] ?? '3') ?>">
+                    <div class="form-text text-muted" style="font-size: 11px;">
+                        Number of seconds the terminal displays the student card before automatically returning to the ready state.
+                    </div>
+                </div>
+            </div>
+
+            <div class="sms-toggle">
+                <div class="toggle-label">
+                    <strong>Terminal Audio Feedback</strong>
+                    <span>Play synthesized zero-latency audio chimes on successful scan, warning tone on duplicate, and buzz on error.</span>
+                </div>
+                <label class="sms-switch">
+                    <input type="checkbox" name="settings[attendance_scanner_audio_feedback]" value="1" <?= ($map['attendance_scanner_audio_feedback'] ?? '1') === '1' ? 'checked' : '' ?>>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="sms-toggle">
+                <div class="toggle-label">
+                    <strong>Send Parent SMS on Check-Out</strong>
+                    <span>Automatically notify parents via SMS when a student departs and checkout is scanned.</span>
+                </div>
+                <label class="sms-switch">
+                    <input type="checkbox" name="settings[attendance_checkout_sms_enabled]" value="1" <?= ($map['attendance_checkout_sms_enabled'] ?? '1') === '1' ? 'checked' : '' ?>>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="sms-toggle">
+                <div class="toggle-label">
+                    <strong>Send Parent Email on Check-Out</strong>
+                    <span>Automatically email parents when their child checks out from school.</span>
+                </div>
+                <label class="sms-switch">
+                    <input type="checkbox" name="settings[attendance_checkout_email_enabled]" value="1" <?= ($map['attendance_checkout_email_enabled'] ?? '1') === '1' ? 'checked' : '' ?>>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <div style="margin-top:20px;">
+            <button type="submit" class="sa-btn sa-btn-primary">
+                <i class="ti ti-device-floppy"></i> Save Scanner Settings
             </button>
         </div>
     </form>

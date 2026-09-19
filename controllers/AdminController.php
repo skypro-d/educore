@@ -2483,6 +2483,28 @@ final class AdminController
             }
 
             flash('success', 'Attendance Notification settings saved successfully.');
+        } elseif ($section === 'scanner') {
+            $tabRedirect = 'scanner';
+            $toggles = [
+                'attendance_auto_toggle_inout',
+                'attendance_checkout_sms_enabled',
+                'attendance_checkout_email_enabled',
+                'attendance_scanner_audio_feedback'
+            ];
+            foreach ($toggles as $key) {
+                $val = isset($postSettings[$key]) ? '1' : '0';
+                $stmt->execute([$key, $val]);
+            }
+            $scannerFields = [
+                'attendance_debounce_minutes',
+                'attendance_scanner_auto_reset_seconds'
+            ];
+            foreach ($scannerFields as $key) {
+                if (isset($postSettings[$key])) {
+                    $stmt->execute([$key, trim((string) $postSettings[$key])]);
+                }
+            }
+            flash('success', 'USB Scanner & Attendance settings saved successfully.');
         } else {
             // Fallback for generic or all-in-one POST: only update keys that were explicitly submitted
             foreach ($postSettings as $key => $val) {

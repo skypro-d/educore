@@ -2,6 +2,21 @@
 
 All notable changes to the EduCore project are documented here. This project adheres to Semantic Versioning.
 
+## [1.0.19] - 2026-09-19
+
+### Added
+- **HIPPOINT X7-1000 USB Attendance Integration**: Built hands-free kiosk attendance scanner terminal at `admin/attendance-scanner` compatible with HIPPOINT X7-1000 2D scanner in USB HID keyboard wedge mode.
+- **Automatic IN / OUT State Machine**: First valid scan logs Check-in (`time_in`); subsequent scan outside debounce threshold logs Check-out (`time_out`).
+- **Duplicate Scan Protection**: Configurable debounce window (default 15 minutes) prevents accidental repeated scans from creating duplicate records or duplicate parent alerts.
+- **Web Audio API Feedback**: Instant audio tone synthesis (chimes for check-in, check-out, duplicate warning, and error) with zero latency.
+- **Parent Notifications**: Asynchronous background dispatch of parent SMS and Email arrival/departure notifications without blocking kiosk throughput.
+- **Attendance Scanner Settings**: Configurable debounce threshold, IN/OUT toggle, and checkout SMS/Email alerts inside `admin/attendance-settings`.
+- **Database Migration 014**: Added `time_out`, `timeout_alert_sent`, and `scan_method` to `attendance` table.
+- **Daily Attendance Sheet Updates**: Added "Time (In / Out)" column and "USB Scanner Terminal" launch button in `admin/attendance`.
+- **Automated Test Suite**: Added `tests/test_x7_1000_attendance_scanner.php` (16 test assertions passing).
+
+---
+
 ## [1.0.18] - 2026-09-18
 
 ### Fixed

@@ -2,6 +2,7 @@
 <div class="sa-top-bar">
     <div><h1>Attendance Management</h1><p>Mark daily class attendance and send alerts to parents</p></div>
     <div class="sa-top-actions">
+        <a class="sa-btn sa-btn-primary" href="<?= url('admin/attendance-scanner') ?>"><i class="ti ti-qrcode"></i> USB Scanner Terminal</a>
         <a class="sa-btn" href="<?= url('admin/attendance-report') ?>"><i class="ti ti-file-analytics"></i> Monthly Report</a>
     </div>
 </div>
@@ -48,6 +49,7 @@
                     <th style="width:50px;">#</th>
                     <th>Student</th>
                     <th style="width:100px;">Reg No.</th>
+                    <th style="width:130px;">Time (In / Out)</th>
                     <th style="width:320px;">Status</th>
                     <th>Remark</th>
                 </tr>
@@ -56,6 +58,8 @@
                 <?php foreach ($students as $i => $s):
                     $existingStatus = $existing[$s['id']]['status'] ?? 'Present';
                     $existingRemark = $existing[$s['id']]['remark'] ?? '';
+                    $timeIn = !empty($existing[$s['id']]['time_in']) ? date('g:i A', strtotime($existing[$s['id']]['time_in'])) : '—';
+                    $timeOut = !empty($existing[$s['id']]['time_out']) ? date('g:i A', strtotime($existing[$s['id']]['time_out'])) : '—';
                     $initials = strtoupper(substr($s['first_name'],0,1).substr($s['last_name'],0,1));
                     $avColors = ['blue','teal','purple','coral','pink','amber'];
                 ?>
@@ -72,6 +76,10 @@
                         </div>
                     </td>
                     <td style="color:#888;font-size:12px;"><?= e($s['application_number']) ?></td>
+                    <td style="font-size:11px;font-family:monospace;white-space:nowrap;">
+                        <div><span style="color:#10b981;font-weight:700;">IN:</span> <?= $timeIn ?></div>
+                        <div><span style="color:#3b82f6;font-weight:700;">OUT:</span> <?= $timeOut ?></div>
+                    </td>
                     <td>
                         <div style="display:flex;gap:6px;" class="att-buttons" data-id="<?= $s['id'] ?>">
                             <?php foreach (['Present','Absent','Late','Excused'] as $statusOpt):

@@ -250,6 +250,15 @@ switch ($route) {
     case 'attendance':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $attendance->save() : $attendance->index();
         break;
+    case 'attendance-scanner':
+        $attendance->scanner();
+        break;
+    case 'attendance-scanner/scan':
+        $attendance->processScanAjax();
+        break;
+    case 'attendance-scanner/recent':
+        $attendance->recentScansAjax();
+        break;
     case 'attendance-report':
         $attendance->report();
         break;
