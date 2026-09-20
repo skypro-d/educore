@@ -2727,7 +2727,7 @@ final class AdminController
             flash('warning', $res['message']);
         }
 
-        redirect($_SERVER['HTTP_REFERER'] ?? url('admin/attendance-notification-logs'));
+        redirect($_SERVER['HTTP_REFERER'] ?? 'admin/attendance-notification-logs');
     }
 
     public function updateNotificationPreferences(int $applicantId): void

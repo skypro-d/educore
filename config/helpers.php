@@ -16,13 +16,20 @@ function e(?string $value): string
 
 function url(string $path = ''): string
 {
+    if ($path !== '' && preg_match('#^https?://#i', $path)) {
+        return $path;
+    }
     $path = ltrim($path, '/');
     return (BASE_URL === '' ? '' : BASE_URL) . '/' . $path;
 }
 
 function redirect(string $path): never
 {
-    header('Location: ' . url($path));
+    if (preg_match('#^https?://#i', $path)) {
+        header('Location: ' . $path);
+    } else {
+        header('Location: ' . url($path));
+    }
     exit;
 }
 

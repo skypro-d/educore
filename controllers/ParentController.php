@@ -257,7 +257,7 @@ final class ParentController
             flash('danger', 'Student not found or not linked to your parent profile.');
         }
 
-        $ref = $_SERVER['HTTP_REFERER'] ?? url('parent/dashboard');
+        $ref = $_SERVER['HTTP_REFERER'] ?? 'parent/dashboard';
         redirect($ref);
     }
 
@@ -583,7 +583,12 @@ final class ParentController
     public function announcements(): void
     {
         $this->requireParent();
-        $announcements = $this->db->query("SELECT * FROM announcements WHERE target_audience IN ('Parents', 'All') ORDER BY created_at DESC")->fetchAll();
+        $announcements = $this->db->query(
+            "SELECT * FROM announcements 
+             WHERE is_published = 1 AND audience IN ('all', 'parents')
+               AND (expires_at IS NULL OR expires_at > NOW())
+             ORDER BY published_at DESC, id DESC"
+        )->fetchAll();
         $children = parent_linked_children();
         render('parent/announcements', compact('announcements', 'children'), 'parent');
     }
