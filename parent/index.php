@@ -44,6 +44,9 @@ switch ($route) {
             $controller->fees();
         }
         break;
+    case 'pay-fee':
+        $controller->payFee();
+        break;
     case 'payment-history':
         $controller->paymentHistory();
         break;

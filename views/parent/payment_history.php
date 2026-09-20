@@ -141,10 +141,10 @@ $activeChildId = (int) ($student['id'] ?? 0);
                             <?= !empty($p['payment_date']) ? date('d M Y, h:i A', strtotime($p['payment_date'])) : date('d M Y', strtotime($p['created_at'])) ?>
                         </td>
                         <td class="text-end fw-bold text-success">
-                            NGN <?= number_format((float) $p['amount_paid'], 2) ?>
+                            ₦<?= number_format((float) $p['amount_paid'], 2) ?>
                         </td>
                         <td class="text-end fw-semibold" style="color: <?= (float)$p['balance'] > 0 ? '#dc2626' : '#16a34a' ?>;">
-                            NGN <?= number_format((float) $p['balance'], 2) ?>
+                            ₦<?= number_format((float) $p['balance'], 2) ?>
                         </td>
                         <td class="text-center">
                             <span class="badge <?= $statusClass ?> border px-2 py-1"><?= e($status) ?></span>
@@ -163,7 +163,7 @@ $activeChildId = (int) ($student['id'] ?? 0);
         <div style="text-align:center;padding:50px 20px;color:#9ca3af;">
             <i class="ti ti-receipt-off" style="font-size:46px;display:block;margin-bottom:12px;opacity:0.6;"></i>
             <div class="fw-bold text-dark">No payment records found</div>
-            <div class="small text-muted mt-1">Recorded payments made via bank transfer or cash at the accounts office will appear here.</div>
+            <div class="small text-muted mt-1">Recorded online payments, bank transfers, or cash receipts will appear here.</div>
         </div>
         <?php endif; ?>
     </div>

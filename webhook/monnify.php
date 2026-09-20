@@ -31,10 +31,14 @@ if (in_array($eventType, ['SUCCESSFUL_TRANSACTION', 'SUCCESS'], true)) {
         $gateway = new PaymentGateway($db, 'monnify');
         $verification = $gateway->verify($reference, 'monnify');
         if ($verification['success']) {
-            $gateway->completePayment($reference, (array) $verification['data'], 'monnify');
-            $payment = (new Payment($db))->findByReference($reference);
-            if ($payment) {
-                (new NotificationController($db))->sendPaymentReceipt((int) $payment['applicant_id'], $reference);
+            if (str_starts_with($reference, 'FEE-') || $gateway->findFeePaymentByReference($reference)) {
+                $gateway->completeFeePayment($reference, (array) $verification['data'], 'monnify');
+            } else {
+                $gateway->completePayment($reference, (array) $verification['data'], 'monnify');
+                $payment = (new Payment($db))->findByReference($reference);
+                if ($payment) {
+                    (new NotificationController($db))->sendPaymentReceipt((int) $payment['applicant_id'], $reference);
+                }
             }
         }
     }

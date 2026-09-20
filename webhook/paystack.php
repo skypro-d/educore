@@ -24,10 +24,14 @@ if (($event['event'] ?? '') === 'charge.success') {
         $gateway = new PaymentGateway($db, 'paystack');
         $verification = $gateway->verify($reference, 'paystack');
         if ($verification['success']) {
-            $gateway->completePayment($reference, (array) $verification['data'], 'paystack');
-            $payment = (new Payment($db))->findByReference($reference);
-            if ($payment) {
-                (new NotificationController($db))->sendPaymentReceipt((int) $payment['applicant_id'], $reference);
+            if (str_starts_with($reference, 'FEE-') || $gateway->findFeePaymentByReference($reference)) {
+                $gateway->completeFeePayment($reference, (array) $verification['data'], 'paystack');
+            } else {
+                $gateway->completePayment($reference, (array) $verification['data'], 'paystack');
+                $payment = (new Payment($db))->findByReference($reference);
+                if ($payment) {
+                    (new NotificationController($db))->sendPaymentReceipt((int) $payment['applicant_id'], $reference);
+                }
             }
         }
     }

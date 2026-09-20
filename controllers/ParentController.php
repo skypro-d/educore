@@ -167,7 +167,7 @@ final class ParentController
         }
 
         // Outstanding fees
-        $feeBalance = $this->outstandingBalance($applicantId);
+        $feeBalance = $this->outstandingBalance($applicantId, (int)($student['class_id'] ?? 0));
 
         // Latest results
         $lastResults = $this->db->prepare(
@@ -388,37 +388,90 @@ final class ParentController
         $year = $_GET['year'] ?? setting('academic_year', date('Y') . '/' . (date('Y') + 1));
         $term = $_GET['term'] ?? setting('current_term', 'First');
 
-        // Fetch applicable fee structures for this student's class and active session
+        // Fetch applicable fee structures with clean deduplication and aggregation
         $stmtFs = $this->db->prepare(
-            "SELECT fs.*, c.name AS class_name,
-                    sfp.id AS payment_id, sfp.amount_paid, sfp.balance, sfp.payment_status, sfp.receipt_number, sfp.payment_date, sfp.payment_method
+            "SELECT fs.id, fs.fee_name, fs.amount, fs.term, fs.academic_year, fs.is_optional, fs.class_id,
+                    c.name AS class_name,
+                    COALESCE(SUM(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.amount_paid ELSE 0 END), 0) AS amount_paid,
+                    GREATEST(0, fs.amount - COALESCE(SUM(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.amount_paid ELSE 0 END), 0)) AS balance,
+                    MAX(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.id ELSE NULL END) AS payment_id,
+                    MAX(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.receipt_number ELSE NULL END) AS receipt_number,
+                    MAX(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.payment_date ELSE NULL END) AS payment_date,
+                    MAX(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.payment_method ELSE NULL END) AS payment_method,
+                    CASE 
+                        WHEN COALESCE(SUM(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.amount_paid ELSE 0 END), 0) >= fs.amount AND fs.amount > 0 THEN 'Paid'
+                        WHEN COALESCE(SUM(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.amount_paid ELSE 0 END), 0) > 0 THEN 'Partial'
+                        ELSE 'Unpaid'
+                    END AS payment_status
              FROM fee_structures fs
              LEFT JOIN classes c ON c.id = fs.class_id
              LEFT JOIN student_fee_payments sfp ON sfp.fee_structure_id = fs.id AND sfp.applicant_id = ?
              WHERE fs.is_active = 1 
                AND (fs.class_id IS NULL OR fs.class_id = 0 OR fs.class_id = ?)
+             GROUP BY fs.id, fs.fee_name, fs.amount, fs.term, fs.academic_year, fs.is_optional, fs.class_id, c.name
              ORDER BY fs.term ASC, fs.fee_name ASC"
         );
         $stmtFs->execute([$applicantId, $classId]);
         $feeSchedule = $stmtFs->fetchAll();
 
         // Outstanding balance
-        $outstanding = $this->outstandingBalance($applicantId);
+        $outstanding = $this->outstandingBalance($applicantId, $classId);
         $children = parent_linked_children();
 
         render('parent/fees', compact('feeSchedule', 'outstanding', 'student', 'year', 'term', 'children'), 'parent');
+    }
+
+    public function payFee(): void
+    {
+        $this->requireParent();
+        verify_csrf();
+
+        $children = parent_linked_children();
+        $allowedApplicantIds = array_map(fn($c) => (int) $c['id'], $children);
+
+        $applicantId = (int) ($_POST['applicant_id'] ?? ($_SESSION['parent']['applicant_id'] ?? 0));
+        if (!in_array($applicantId, $allowedApplicantIds, true)) {
+            flash('danger', 'Unauthorized or invalid student selection.');
+            redirect('parent/fees');
+            return;
+        }
+
+        $feeStructureId = (int) ($_POST['fee_structure_id'] ?? 0);
+        $amount = (float) ($_POST['amount'] ?? 0);
+        $gateway = trim((string) ($_POST['gateway'] ?? ''));
+
+        if ($feeStructureId <= 0 || $amount <= 0) {
+            flash('danger', 'Invalid fee item or payment amount specified.');
+            redirect('parent/fees');
+            return;
+        }
+
+        require_once __DIR__ . '/PaymentGateway.php';
+        $gatewayObj = new PaymentGateway($this->db, $gateway ?: null);
+        $result = $gatewayObj->initiateForStudentFee($applicantId, $feeStructureId, $amount, 'parent', $gateway ?: null);
+
+        if ($result['success'] ?? false) {
+            header('Location: ' . $result['redirect_url']);
+            exit;
+        }
+
+        flash('danger', $result['error'] ?? 'Could not initialize payment with the gateway. Please try again.');
+        redirect('parent/fees');
     }
 
     public function paymentHistory(): void
     {
         $this->requireParent();
         $applicantId = (int) $_SESSION['parent']['applicant_id'];
+        $student = (new Applicant($this->db))->find($applicantId);
+        $classId = (int) ($student['class_id'] ?? 0);
         $year = $_GET['year'] ?? '';
 
         $sql = "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year
                 FROM student_fee_payments sfp
                 JOIN fee_structures fs ON fs.id = sfp.fee_structure_id
-                WHERE sfp.applicant_id = ?";
+                WHERE sfp.applicant_id = ?
+                  AND sfp.payment_status IN ('Paid', 'Partial', 'Manual')";
         $params = [$applicantId];
         if ($year !== '') {
             $sql .= " AND fs.academic_year = ?";
@@ -430,8 +483,7 @@ final class ParentController
         $stmt->execute($params);
         $payments = $stmt->fetchAll();
 
-        $outstanding = $this->outstandingBalance($applicantId);
-        $student = (new Applicant($this->db))->find($applicantId);
+        $outstanding = $this->outstandingBalance($applicantId, $classId);
         $children = parent_linked_children();
 
         render('parent/payment_history', compact('payments', 'outstanding', 'student', 'year', 'children'), 'parent');
@@ -473,55 +525,37 @@ final class ParentController
         render('shared/fee_receipt', compact('payment', 'backUrl'), 'none');
     }
 
-    public function announcements(): void
-    {
-        $this->requireParent();
-        $announcements = $this->db->query(
-            "SELECT * FROM announcements WHERE is_published=1
-             AND audience IN ('all','parents')
-             AND (expires_at IS NULL OR expires_at > NOW())
-             ORDER BY published_at DESC"
-        )->fetchAll();
-        render('parent/announcements', compact('announcements'), 'parent');
-    }
-
     public function timetable(): void
     {
         $this->requireParent();
-        $applicantId = $this->activeChildApplicantId();
+        $applicantId = (int) $_SESSION['parent']['applicant_id'];
         $student = (new Applicant($this->db))->find($applicantId);
-        $classId = (int) ($student['class_id'] ?? 0);
-        
+        $classId = (int) $student['class_id'];
+
         $stmt = $this->db->prepare(
-            "SELECT t.*, s.name AS subject_name, s.code AS subject_code, st.first_name, st.last_name 
+            "SELECT t.*, s.name AS subject_name, st.first_name, st.last_name 
              FROM timetables t
              JOIN subjects s ON s.id = t.subject_id
              LEFT JOIN staff st ON st.id = t.teacher_id
-             WHERE t.class_id = ?
+             WHERE t.class_id = ? 
              ORDER BY FIELD(t.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), t.start_time ASC"
         );
         $stmt->execute([$classId]);
-        $schedule = $stmt->fetchAll();
+        $timetable = $stmt->fetchAll();
 
         $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-        $timetable = [];
-        foreach ($days as $day) {
-            $timetable[$day] = [];
-        }
-        foreach ($schedule as $row) {
-            if (in_array($row['day_of_week'], $days)) {
-                $timetable[$row['day_of_week']][] = $row;
-            }
-        }
+        $children = parent_linked_children();
 
-        render('parent/timetable', compact('timetable', 'days', 'student'), 'parent');
+        render('parent/timetable', compact('timetable', 'days', 'student', 'children'), 'parent');
     }
 
     public function idCard(): void
     {
         $this->requireParent();
-        $student = (new Applicant($this->db))->find((int)$_SESSION['parent']['applicant_id']);
-        render('parent/id_card', compact('student'), 'parent');
+        $applicantId = (int) $_SESSION['parent']['applicant_id'];
+        $student = (new Applicant($this->db))->find($applicantId);
+        $children = parent_linked_children();
+        render('parent/id_card', compact('student', 'children'), 'parent');
     }
 
     public function notifications(): void
@@ -542,7 +576,16 @@ final class ParentController
         $stmt->execute([$parentAccId]);
         $notifications = $stmt->fetchAll();
 
-        render('parent/notifications', compact('notifications'), 'parent');
+        $children = parent_linked_children();
+        render('parent/notifications', compact('notifications', 'children'), 'parent');
+    }
+
+    public function announcements(): void
+    {
+        $this->requireParent();
+        $announcements = $this->db->query("SELECT * FROM announcements WHERE target_audience IN ('Parents', 'All') ORDER BY created_at DESC")->fetchAll();
+        $children = parent_linked_children();
+        render('parent/announcements', compact('announcements', 'children'), 'parent');
     }
 
     public function changePasswordForm(): void
@@ -593,13 +636,28 @@ final class ParentController
         return $_SESSION['parent'] ?? null;
     }
 
-    private function outstandingBalance(int $applicantId): float
+    private function outstandingBalance(int $applicantId, int $classId = 0): float
     {
-        $stmt = $this->db->prepare(
-            "SELECT COALESCE(SUM(balance), 0) FROM student_fee_payments
-             WHERE applicant_id=? AND payment_status IN ('Pending','Partial')"
+        if ($classId <= 0) {
+            $stmtClass = $this->db->prepare("SELECT class_id FROM applicants WHERE id = ?");
+            $stmtClass->execute([$applicantId]);
+            $classId = (int) $stmtClass->fetchColumn();
+        }
+
+        $stmtTotalFees = $this->db->prepare(
+            "SELECT COALESCE(SUM(amount), 0) FROM fee_structures 
+             WHERE is_active = 1 AND (class_id IS NULL OR class_id = 0 OR class_id = ?)"
         );
-        $stmt->execute([$applicantId]);
-        return (float) $stmt->fetchColumn();
+        $stmtTotalFees->execute([$classId]);
+        $totalFees = (float) $stmtTotalFees->fetchColumn();
+
+        $stmtTotalPaid = $this->db->prepare(
+            "SELECT COALESCE(SUM(amount_paid), 0) FROM student_fee_payments 
+             WHERE applicant_id = ? AND payment_status IN ('Paid', 'Partial', 'Manual')"
+        );
+        $stmtTotalPaid->execute([$applicantId]);
+        $totalPaid = (float) $stmtTotalPaid->fetchColumn();
+
+        return max(0.00, $totalFees - $totalPaid);
     }
 }
