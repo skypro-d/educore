@@ -172,11 +172,93 @@ $activeChildId = (int) ($s['id'] ?? 0);
             </div>
         </div>
 
-        <!-- School & Term Fee Payments Table -->
+        <!-- 1. School Fee Schedule & Term Invoices (Paid, Partial, Unpaid) -->
+        <div class="p-3 px-4 mb-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="fw-bold text-dark small text-uppercase" style="letter-spacing: 0.5px; font-size: 11.5px;">
+                    <i class="ti ti-calendar-dollar text-primary me-1"></i> Fee Schedule &amp; Invoices (<?= count($feeSchedule ?? []) ?>)
+                </div>
+                <a href="<?= url('parent/fees') ?>" class="btn btn-sm btn-primary py-1 px-3 fw-semibold" style="font-size: 11.5px; border-radius: 8px;">
+                    <i class="ti ti-credit-card me-1"></i> Pay School Fees
+                </a>
+            </div>
+
+            <?php if (!empty($feeSchedule)): ?>
+                <div class="table-responsive rounded-3 border mb-3">
+                    <table class="table align-middle mb-0" style="font-size: 13px;">
+                        <thead style="background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">
+                            <tr>
+                                <th class="ps-3">Fee Item</th>
+                                <th>Term / Session</th>
+                                <th class="text-end">Total Amount</th>
+                                <th class="text-end">Amount Paid</th>
+                                <th class="text-end">Balance Due</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-end pe-3">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($feeSchedule as $fs): 
+                                $status = $fs['payment_status'] ?? 'Unpaid';
+                                $statusClass = match($status) {
+                                    'Paid' => 'bg-success-subtle text-success border-success-subtle',
+                                    'Partial' => 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+                                    default => 'bg-danger-subtle text-danger border-danger-subtle'
+                                };
+                            ?>
+                            <tr>
+                                <td class="ps-3">
+                                    <div class="fw-bold text-dark"><?= e($fs['fee_name']) ?></div>
+                                    <?php if (!empty($fs['is_optional'])): ?>
+                                        <span class="badge bg-secondary-subtle text-secondary" style="font-size: 10px;">Optional Fee</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border"><?= e($fs['term']) ?> Term</span>
+                                    <?php if (!empty($fs['academic_year'])): ?>
+                                        <div class="text-muted small" style="font-size: 11px;"><?= e($fs['academic_year']) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-end fw-semibold text-dark">
+                                    ₦<?= number_format((float) $fs['fee_amount'], 2) ?>
+                                </td>
+                                <td class="text-end fw-bold text-success">
+                                    ₦<?= number_format((float) $fs['total_paid'], 2) ?>
+                                </td>
+                                <td class="text-end fw-bold" style="color: <?= (float)$fs['balance_due'] > 0 ? '#dc2626' : '#16a34a' ?>;">
+                                    ₦<?= number_format((float) $fs['balance_due'], 2) ?>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge <?= $statusClass ?> border px-2 py-1 font-monospace fw-bold">
+                                        <?= e($status) ?>
+                                    </span>
+                                </td>
+                                <td class="text-end pe-3">
+                                    <?php if ($status !== 'Paid'): ?>
+                                        <a href="<?= url('parent/fees') ?>" class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold" style="font-size: 11px;">
+                                            <i class="ti ti-wallet me-1"></i> Pay Now
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="text-success small fw-semibold"><i class="ti ti-circle-check-filled me-1"></i>Cleared</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <div class="p-3 bg-light rounded-3 text-center text-muted mb-3" style="font-size: 12.5px;">
+                    <i class="ti ti-info-circle me-1"></i> No fee structures configured for this child's class yet.
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- 2. School Fee Payment Transactions Table -->
         <div class="p-3 px-4">
             <div class="d-flex align-items-center justify-content-between mb-2">
                 <div class="fw-bold text-dark small text-uppercase" style="letter-spacing: 0.5px; font-size: 11.5px;">
-                    <i class="ti ti-file-invoice text-primary me-1"></i> School Fee Payments (<?= count($feePayments ?? []) ?>)
+                    <i class="ti ti-receipt text-primary me-1"></i> Payment Receipts &amp; Transactions (<?= count($feePayments ?? []) ?>)
                 </div>
                 <a href="<?= url('parent/payment-history') ?>" class="small text-decoration-none fw-semibold text-primary">
                     View Full Payment Ledger &rarr;
@@ -254,15 +336,15 @@ $activeChildId = (int) ($s['id'] ?? 0);
                         </tbody>
                     </table>
                 </div>
-            <?php else: ?>
                 <div class="p-4 bg-light rounded-3 text-center text-muted" style="font-size: 13px;">
                     <i class="ti ti-receipt-off fs-3 d-block mb-1 text-secondary opacity-50"></i>
-                    No school term fee payments recorded for <?= e($s['first_name']) ?> yet.
+                    No school term fee payments recorded for <?= e($student['first_name'] ?? 'student') ?> yet.
                 </div>
             <?php endif; ?>
+        </div>
 
-            <!-- Admission / Portal Payments (if any) -->
-            <?php if (!empty($admissionPayments)): ?>
+        <!-- Admission / Portal Payments (if any) -->
+        <?php if (!empty($admissionPayments)): ?>
             <div class="mt-4">
                 <div class="fw-bold text-dark small text-uppercase mb-2" style="letter-spacing: 0.5px; font-size: 11.5px;">
                     <i class="ti ti-credit-card text-primary me-1"></i> Admission &amp; Portal Payments (<?= count($admissionPayments) ?>)

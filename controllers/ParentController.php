@@ -268,6 +268,36 @@ final class ParentController
         $student = (new Applicant($this->db))->find($applicantId);
         $children = parent_linked_children();
 
+        $classId = (int) ($student['class_id'] ?? 0);
+
+        // Fetch all assigned fee structures for this child (Paid, Partial, and Unpaid)
+        $stmtFs = $this->db->prepare(
+            "SELECT fs.id AS fee_structure_id,
+                    fs.fee_name,
+                    fs.amount AS fee_amount,
+                    fs.term,
+                    fs.academic_year,
+                    fs.is_optional,
+                    fs.class_id,
+                    c.name AS class_name,
+                    COALESCE(SUM(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.amount_paid ELSE 0 END), 0) AS total_paid,
+                    GREATEST(0, fs.amount - COALESCE(SUM(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.amount_paid ELSE 0 END), 0)) AS balance_due,
+                    CASE 
+                        WHEN COALESCE(SUM(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.amount_paid ELSE 0 END), 0) >= fs.amount AND fs.amount > 0 THEN 'Paid'
+                        WHEN COALESCE(SUM(CASE WHEN sfp.payment_status IN ('Paid','Partial','Manual') THEN sfp.amount_paid ELSE 0 END), 0) > 0 THEN 'Partial'
+                        ELSE 'Unpaid'
+                    END AS payment_status
+             FROM fee_structures fs
+             LEFT JOIN classes c ON c.id = fs.class_id
+             LEFT JOIN student_fee_payments sfp ON sfp.fee_structure_id = fs.id AND sfp.applicant_id = ?
+             WHERE fs.is_active = 1 
+               AND (fs.class_id IS NULL OR fs.class_id = 0 OR fs.class_id = ?)
+             GROUP BY fs.id, fs.fee_name, fs.amount, fs.term, fs.academic_year, fs.is_optional, fs.class_id, c.name
+             ORDER BY fs.term ASC, fs.fee_name ASC"
+        );
+        $stmtFs->execute([$applicantId, $classId]);
+        $feeSchedule = $stmtFs->fetchAll();
+
         // Fetch term fee payments for this child
         $stmtFeePayments = $this->db->prepare(
             "SELECT sfp.*, fs.fee_name, fs.term, fs.amount AS fee_amount, fs.academic_year
@@ -288,11 +318,11 @@ final class ParentController
         $stmtAdmPayments->execute([$applicantId]);
         $admissionPayments = $stmtAdmPayments->fetchAll();
 
-        $outstanding = $this->outstandingBalance($applicantId);
+        $outstanding = $this->outstandingBalance($applicantId, $classId);
 
         $totalFeePaid = 0.0;
-        foreach ($feePayments as $fp) {
-            $totalFeePaid += (float) ($fp['amount_paid'] ?? 0);
+        foreach ($feeSchedule as $fsItem) {
+            $totalFeePaid += (float) ($fsItem['total_paid'] ?? 0);
         }
         foreach ($admissionPayments as $ap) {
             if (($ap['payment_status'] ?? '') === 'Paid') {
@@ -300,7 +330,7 @@ final class ParentController
             }
         }
 
-        render('parent/child', compact('student', 'children', 'feePayments', 'admissionPayments', 'outstanding', 'totalFeePaid'), 'parent');
+        render('parent/child', compact('student', 'children', 'feeSchedule', 'feePayments', 'admissionPayments', 'outstanding', 'totalFeePaid'), 'parent');
     }
 
     public function attendance(): void

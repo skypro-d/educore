@@ -337,13 +337,92 @@ $documents = [
             </div>
         </div>
 
-        <!-- School / Term Fee Payments Table -->
+        <!-- 1. School Fee Schedule (Paid, Partial, & Unpaid Fees) -->
+        <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="fw-bold text-dark small text-uppercase" style="letter-spacing: 0.5px; font-size: 11.5px;">
+                    <i class="ti ti-calendar-dollar text-primary me-1"></i> Fee Schedule &amp; Term Invoices (<?= count($feeSchedule ?? []) ?>)
+                </div>
+                <small class="text-muted">Showing all assigned, paid, and outstanding fee items for <?= e($application['class_name'] ?: 'Class') ?></small>
+            </div>
+            <?php if (!empty($feeSchedule)): ?>
+                <div class="table-responsive rounded-3 border mb-3">
+                    <table class="table table-sm table-hover align-middle mb-0" style="font-size: 12.5px;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Fee Item</th>
+                                <th>Term / Session</th>
+                                <th class="text-end">Total Amount</th>
+                                <th class="text-end">Amount Paid</th>
+                                <th class="text-end">Balance Due</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-end pe-3">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($feeSchedule as $fs): 
+                                $status = $fs['payment_status'] ?? 'Unpaid';
+                                $badgeClass = match($status) {
+                                    'Paid' => 'bg-success-subtle text-success border-success-subtle',
+                                    'Partial' => 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+                                    default => 'bg-danger-subtle text-danger border-danger-subtle'
+                                };
+                            ?>
+                            <tr>
+                                <td>
+                                    <div class="fw-bold text-dark"><?= e($fs['fee_name']) ?></div>
+                                    <?php if (!empty($fs['is_optional'])): ?>
+                                        <span class="badge bg-secondary-subtle text-secondary" style="font-size: 10px;">Optional Fee</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border"><?= e($fs['term']) ?> Term</span>
+                                    <?php if (!empty($fs['academic_year'])): ?>
+                                        <div class="text-muted" style="font-size: 10.5px;"><?= e($fs['academic_year']) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-end fw-semibold text-dark">
+                                    ₦<?= number_format((float) $fs['fee_amount'], 2) ?>
+                                </td>
+                                <td class="text-end fw-bold text-success">
+                                    ₦<?= number_format((float) $fs['total_paid'], 2) ?>
+                                </td>
+                                <td class="text-end fw-bold" style="color: <?= (float)$fs['balance_due'] > 0 ? '#dc2626' : '#16a34a' ?>;">
+                                    ₦<?= number_format((float) $fs['balance_due'], 2) ?>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge <?= $badgeClass ?> border px-2 py-1 font-monospace fw-bold">
+                                        <?= e($status) ?>
+                                    </span>
+                                </td>
+                                <td class="text-end pe-3">
+                                    <?php if ($status !== 'Paid'): ?>
+                                        <a href="<?= url('admin/student-fees') ?>" class="btn btn-xs btn-primary py-1 px-2 rounded-2 shadow-sm" style="font-size: 11px;">
+                                            <i class="ti ti-plus me-1"></i> Collect
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="text-success small fw-semibold"><i class="ti ti-circle-check-filled me-1"></i>Completed</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php else: ?>
+                <div class="p-3 bg-light rounded-3 text-center text-muted mb-3" style="font-size: 12.5px;">
+                    <i class="ti ti-info-circle me-1"></i> No fee schedule structures configured for <?= e($application['class_name'] ?: 'this student\'s class') ?> yet.
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- 2. Recorded Payment Receipts & Transactions -->
         <div class="mb-4">
             <div class="fw-bold text-dark small text-uppercase mb-2" style="letter-spacing: 0.5px; font-size: 11.5px;">
-                <i class="ti ti-file-invoice text-primary me-1"></i> School &amp; Term Fees (<?= count($feePayments ?? []) ?>)
+                <i class="ti ti-receipt text-primary me-1"></i> Payment Receipts &amp; Transactions (<?= count($feePayments ?? []) ?>)
             </div>
             <?php if (!empty($feePayments)): ?>
-                <div class="table-responsive">
+                <div class="table-responsive rounded-3 border">
                     <table class="table table-sm table-hover align-middle mb-0" style="font-size: 12.5px;">
                         <thead class="table-light">
                             <tr>
@@ -415,7 +494,7 @@ $documents = [
                 </div>
             <?php else: ?>
                 <div class="p-3 bg-light rounded-3 text-center text-muted" style="font-size: 12.5px;">
-                    <i class="ti ti-receipt-off me-1"></i> No school term fees recorded for this student yet.
+                    <i class="ti ti-receipt-off me-1"></i> No payment receipts recorded yet for this student.
                 </div>
             <?php endif; ?>
         </div>
