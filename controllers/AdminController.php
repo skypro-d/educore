@@ -3781,6 +3781,17 @@ final class AdminController
 
         $whereSql = implode(' AND ', $where);
 
+        $sql = "SELECT el.*, a.first_name, a.last_name, a.application_number, a.admission_number,
+                       a.parent_phone, a.passport_photo, c.name AS class_name, g.gate_name, adm.name AS staff_name
+                FROM student_exit_logs el
+                JOIN applicants a ON a.id = el.student_id
+                LEFT JOIN classes c ON c.id = a.class_id
+                LEFT JOIN school_gates g ON g.id = el.gate_id
+                LEFT JOIN admins adm ON adm.id = el.scanned_by
+                WHERE {$whereSql}
+                ORDER BY el.id DESC
+                LIMIT {$perPage} OFFSET {$offset}";
+
         try {
             $stmtCount = $this->db->prepare("SELECT COUNT(*) FROM student_exit_logs el JOIN applicants a ON a.id = el.student_id WHERE {$whereSql}");
             $stmtCount->execute($params);
