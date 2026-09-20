@@ -57,7 +57,7 @@ switch ($route) {
         $controller->timetable();
         break;
     case 'id-card':
-        $controller->idCard();
+        redirect('parent/dashboard');
         break;
     case 'notifications':
         $controller->notifications();

@@ -273,7 +273,6 @@ $attPct      = $totalDays ? round((($presentCnt + ($lateCnt * 0.5)) / $totalDays
             <a href="<?= url('parent/results') ?>" style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#f5f0ff;color:#7c3aed;border-radius:10px;text-decoration:none;font-size:13px;font-weight:500;"><i class="ti ti-report-analytics" style="font-size:17px;"></i>View Results</a>
             <a href="<?= url('parent/fees') ?>" style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#f0fdf4;color:#16a34a;border-radius:10px;text-decoration:none;font-size:13px;font-weight:500;"><i class="ti ti-receipt" style="font-size:17px;"></i>Pay School Fees</a>
             <a href="<?= url('parent/timetable') ?>" style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#fef9ec;color:#d97706;border-radius:10px;text-decoration:none;font-size:13px;font-weight:500;"><i class="ti ti-calendar" style="font-size:17px;"></i>Child Timetable</a>
-            <a href="<?= url('parent/id-card') ?>" style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:#e2f8f5;color:#0d9488;border-radius:10px;text-decoration:none;font-size:13px;font-weight:500;"><i class="ti ti-id" style="font-size:17px;"></i>Child ID Card</a>
         </div>
     </div>
 

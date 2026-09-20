@@ -142,7 +142,6 @@ $activeChildId = (int) ($parentSession['applicant_id'] ?? 0);
         <a class="<?= $currentRoute === 'results' ? 'active' : '' ?>" href="<?= url('parent/results') ?>"><i class="ti ti-report-analytics"></i> Results</a>
         <a class="<?= $currentRoute === 'attendance' ? 'active' : '' ?>" href="<?= url('parent/attendance') ?>"><i class="ti ti-calendar-check"></i> Attendance</a>
         <a class="<?= $currentRoute === 'timetable' ? 'active' : '' ?>" href="<?= url('parent/timetable') ?>"><i class="ti ti-calendar"></i> Child Timetable</a>
-        <a class="<?= $currentRoute === 'id-card' ? 'active' : '' ?>" href="<?= url('parent/id-card') ?>"><i class="ti ti-id"></i> Child ID Card</a>
         
         <div class="nav-label">Finance</div>
         <a class="<?= $currentRoute === 'fees' ? 'active' : '' ?>" href="<?= url('parent/fees') ?>"><i class="ti ti-wallet"></i> School Fees</a>

@@ -264,10 +264,6 @@ $fullName = trim($student['first_name'] . ' ' . ($student['middle_name'] ?? '') 
                 <div class="info-item"><span>Blood Group</span><span><?= e($student['blood_group'] ?: '—') ?></span></div>
                 <div class="info-item"><span>Status</span><span><span class="badge bg-success" style="font-size:10px"><?= e($student['student_status'] ?? 'Active') ?></span></span></div>
             </div>
-            <div style="margin-top:1.5rem;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                <a class="btn btn-sm btn-primary" href="<?= url('student/id-card') ?>"><i class="ti ti-id" style="margin-right:6px"></i>View ID</a>
-                <button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="ti ti-printer" style="margin-right:6px"></i>Print Slip</button>
-            </div>
         </div>
 
         <!-- Today's Timetable -->

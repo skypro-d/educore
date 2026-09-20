@@ -103,7 +103,6 @@
         <div class="nav-label">General</div>
         <a class="<?= $currentRoute === 'dashboard' ? 'active' : '' ?>" href="<?= url('student/dashboard') ?>"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
         <a class="<?= $currentRoute === 'timetable' ? 'active' : '' ?>" href="<?= url('student/timetable') ?>"><i class="ti ti-calendar"></i> Class Timetable</a>
-        <a class="<?= $currentRoute === 'id-card' ? 'active' : '' ?>" href="<?= url('student/id-card') ?>"><i class="ti ti-id"></i> Student ID Card</a>
 
         <div class="nav-label">Finance</div>
         <a class="<?= $currentRoute === 'fees' || $currentRoute === 'fee-schedule' ? 'active' : '' ?>" href="<?= url('student/fees') ?>"><i class="ti ti-wallet"></i> Fee Schedule</a>

@@ -70,7 +70,7 @@ switch ($route) {
         $controller->timetable();
         break;
     case 'id-card':
-        $controller->idCard();
+        redirect('student/dashboard');
         break;
     case 'notifications':
         $controller->notifications();
