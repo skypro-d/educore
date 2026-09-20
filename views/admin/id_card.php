@@ -11,10 +11,14 @@ $subName  = strtoupper($nameParts[1] ?? 'INTERNATIONAL SCHOOL');
 // School Logo URL calculation
 $logoUrl = school_logo_url() ?: '';
 
-// Dynamic ID Card Colors
+// Dynamic ID Card Colors & Validity
 $idPrimaryColor   = setting('id_card_primary_color', setting('primary_color', '#0b3d91'));
 $idSecondaryColor = setting('id_card_secondary_color', setting('secondary_color', '#1e40af'));
 $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
+$idValidity       = setting('id_card_validity', '');
+if (empty(trim((string)$idValidity))) {
+    $idValidity = 'JUL ' . date('Y') . ' – JUL ' . date('Y', strtotime('+1 year'));
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -588,7 +592,7 @@ $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
         <div class="color-palette-toolbar">
             <div class="color-toolbar-title">
                 <i class="ti ti-palette" style="color:var(--id-primary); font-size:18px;"></i>
-                <span>ID Card Color Theme:</span>
+                <span>Theme &amp; Validity:</span>
             </div>
 
             <div class="color-inputs-wrap">
@@ -603,6 +607,11 @@ $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
                 <div class="color-input-badge" title="Header Dark/Background Base">
                     <span>Base:</span>
                     <input type="color" id="headerBgPicker" value="<?= e($idHeaderBg) ?>" class="color-swatch-picker">
+                </div>
+                <div class="color-input-badge" title="ID Card Validation Period (Printed on card)">
+                    <i class="ti ti-calendar-event" style="color:var(--id-primary);font-size:13px;"></i>
+                    <span>Valid:</span>
+                    <input type="text" id="validityInput" value="<?= e($idValidity) ?>" style="border:1px solid #cbd5e1;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;color:#1e293b;background:#fff;width:155px;outline:none;font-family:'Plus Jakarta Sans',sans-serif;" placeholder="JUL <?= date('Y') ?> – JUL <?= date('Y', strtotime('+1 year')) ?>">
                 </div>
             </div>
 
@@ -748,7 +757,7 @@ $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
                         <div class="id-info-cols">
                             <div class="id-info-cell" style="grid-column: span 2;">
                                 <span class="id-info-lbl">VALID</span>
-                                <span class="id-info-val">JUL <?= date('Y') ?> – JUL <?= date('Y', strtotime('+1 year')) ?></span>
+                                <span class="id-info-val" id="idCardValidityDisplay"><?= e($idValidity) ?></span>
                             </div>
                         </div>
                     </div>
@@ -855,6 +864,15 @@ $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
             });
         });
 
+        const validityInput = document.getElementById('validityInput');
+        const validityDisplay = document.getElementById('idCardValidityDisplay');
+
+        if (validityInput && validityDisplay) {
+            validityInput.addEventListener('input', function() {
+                validityDisplay.textContent = this.value || '<?= e($idValidity) ?>';
+            });
+        }
+
         if (saveBtn) {
             saveBtn.addEventListener('click', async function() {
                 const origHtml = saveBtn.innerHTML;
@@ -867,6 +885,7 @@ $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
                     formData.append('id_card_primary_color', primaryPicker.value);
                     formData.append('id_card_secondary_color', secondaryPicker.value);
                     formData.append('id_card_header_bg', headerBgPicker.value);
+                    formData.append('id_card_validity', validityInput ? validityInput.value : '');
 
                     const res = await fetch('<?= url('admin/settings/save-id-card-color') ?>', {
                         method: 'POST',
@@ -879,10 +898,10 @@ $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
                         toast.style.display = 'inline-flex';
                         setTimeout(() => { toast.style.display = 'none'; }, 3500);
                     } else {
-                        alert(data.message || 'Error saving ID card color.');
+                        alert(data.message || 'Error saving ID card settings.');
                     }
                 } catch (e) {
-                    alert('Network error while saving color.');
+                    alert('Network error while saving settings.');
                 } finally {
                     saveBtn.disabled = false;
                     saveBtn.innerHTML = origHtml;

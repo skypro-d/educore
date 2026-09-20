@@ -1058,11 +1058,15 @@ final class AdminController
         $stmt->execute(['id_card_primary_color', $primary]);
         $stmt->execute(['id_card_secondary_color', $secondary]);
         $stmt->execute(['id_card_header_bg', $headerBg]);
+        if (isset($_POST['id_card_validity'])) {
+            $validity = trim((string) $_POST['id_card_validity']);
+            $stmt->execute(['id_card_validity', $validity]);
+        }
 
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'success' => true,
-            'message' => 'School ID card colors updated successfully.'
+            'message' => 'School ID card settings updated successfully.'
         ]);
         exit;
     }

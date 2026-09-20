@@ -439,6 +439,27 @@ $activeWebsite = school_website_url();
                     </div>
                 </div>
 
+                <!-- ID Card Validity Period Setting -->
+                <div class="row g-3 mt-1 pt-3 border-top">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold small text-secondary">ID Card Validity Date / Period</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light text-muted"><i class="ti ti-calendar-event"></i></span>
+                            <input type="text" class="form-control form-control-sm font-monospace fw-semibold" id="settingsIdValidity" name="settings[id_card_validity]" value="<?= e($map['id_card_validity'] ?? '') ?>" placeholder="e.g. JUL <?= date('Y') ?> – JUL <?= date('Y', strtotime('+1 year')) ?>">
+                        </div>
+                        <div class="form-text small text-muted">Printed on the student ID card under the <strong>VALID</strong> field (e.g. <code>JUL <?= date('Y') ?> – JUL <?= date('Y', strtotime('+1 year')) ?></code>). Leave blank for automated annual cycle.</div>
+                    </div>
+                    <div class="col-md-6 d-flex flex-column justify-content-end">
+                        <label class="form-label fw-semibold small text-secondary mb-1">Validity Quick Presets</label>
+                        <div class="d-flex flex-wrap gap-2 mb-1">
+                            <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="document.getElementById('settingsIdValidity').value='JUL <?= date('Y') ?> – JUL <?= date('Y', strtotime('+1 year')) ?>'"><i class="ti ti-calendar me-1"></i>Current (<?= date('Y') ?>–<?= date('Y', strtotime('+1 year')) ?>)</button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="document.getElementById('settingsIdValidity').value='JUL <?= date('Y', strtotime('+1 year')) ?> – JUL <?= date('Y', strtotime('+2 years')) ?>'"><i class="ti ti-calendar-plus me-1"></i>Next (<?= date('Y', strtotime('+1 year')) ?>–<?= date('Y', strtotime('+2 years')) ?>)</button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="document.getElementById('settingsIdValidity').value='<?= strtoupper(date('M Y')) ?> – <?= strtoupper(date('M Y', strtotime('+1 year'))) ?>'"><i class="ti ti-clock me-1"></i>1 Yr from Today</button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="document.getElementById('settingsIdValidity').value='<?= strtoupper(date('M Y')) ?> – <?= strtoupper(date('M Y', strtotime('+2 years'))) ?>'"><i class="ti ti-calendar-time me-1"></i>2 Yrs from Today</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 1-Click ID Card Color Presets -->
                 <div class="mt-3 pt-3 border-top d-flex align-items-center flex-wrap gap-2">
                     <span class="small fw-semibold text-secondary me-2">Quick Presets:</span>

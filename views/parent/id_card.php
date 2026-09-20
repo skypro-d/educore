@@ -11,10 +11,14 @@ $subName  = strtoupper($nameParts[1] ?? 'INTERNATIONAL SCHOOL');
 // School Logo URL calculation
 $logoUrl = school_logo_url() ?: '';
 
-// Dynamic ID Card Colors
+// Dynamic ID Card Colors & Validity
 $idPrimaryColor   = setting('id_card_primary_color', setting('primary_color', '#0b3d91'));
 $idSecondaryColor = setting('id_card_secondary_color', setting('secondary_color', '#1e40af'));
 $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
+$idValidity       = setting('id_card_validity', '');
+if (empty(trim((string)$idValidity))) {
+    $idValidity = 'JUL ' . date('Y') . ' – JUL ' . date('Y', strtotime('+1 year'));
+}
 ?>
 
 <style>
@@ -539,7 +543,7 @@ if (!$hasQr) {
                     <div class="id-info-cols">
                         <div class="id-info-cell" style="grid-column: span 2;">
                             <span class="id-info-lbl">VALID</span>
-                            <span class="id-info-val">JUL <?= date('Y') ?> – JUL <?= date('Y', strtotime('+1 year')) ?></span>
+                            <span class="id-info-val"><?= e($idValidity) ?></span>
                         </div>
                     </div>
                 </div>
