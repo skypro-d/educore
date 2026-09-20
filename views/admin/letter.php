@@ -43,9 +43,13 @@ $letterClosing = setting('admission_letter_closing', 'Congratulations, and welco
     </div>
     <p><?= $renderLetterText($letterClosing) ?></p>
     <div class="signature">
-        <span></span>
+        <?php if ($sig = setting('principal_signature', '')): ?>
+            <img src="<?= url('uploads/' . $sig) ?>" alt="Signature" style="max-height:45px;max-width:140px;object-fit:contain;margin-bottom:-10px;">
+        <?php else: ?>
+            <span></span>
+        <?php endif; ?>
         <strong><?= e(setting('principal_name', 'The Principal')) ?></strong>
-        <small><?= e(setting('admission_letter_signature_title', 'Principal')) ?></small>
+        <small><?= e(setting('admission_letter_signature_title', setting('principal_signature_title', 'Principal'))) ?></small>
     </div>
     <div class="no-print text-center mt-4 d-flex justify-content-center align-items-center gap-2 flex-wrap">
         <button class="btn btn-primary" onclick="window.print()"><i class="ti ti-printer"></i> Print / PDF Download</button>

@@ -516,18 +516,30 @@ $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
             text-align: center;
             margin-top: auto;
             margin-bottom: 6px;
+            position: relative;
+        }
+
+        .id-sig-img {
+            max-height: 38px;
+            max-width: 135px;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto -4px;
+            position: relative;
+            z-index: 2;
         }
 
         .id-sig-line {
             width: 140px;
             border-top: 1px solid #94a3b8;
-            margin: 0 auto 4px;
+            margin: 0 auto 3px;
         }
 
         .id-sig-text {
-            font-size: 11px;
+            font-size: 10.5px;
             font-style: italic;
             color: #334155;
+            font-weight: 500;
         }
 
         .id-card-back-footer {
@@ -782,8 +794,15 @@ $idHeaderBg       = setting('id_card_header_bg', '#0f172a');
                 </div>
 
                 <div class="id-sig-section">
+                    <?php 
+                    $principalSig = setting('principal_signature', '');
+                    $principalSigTitle = setting('principal_signature_title', 'Principal signature');
+                    if (!empty($principalSig)): 
+                    ?>
+                        <img src="<?= url('uploads/' . $principalSig) ?>" alt="Principal Signature" class="id-sig-img">
+                    <?php endif; ?>
                     <div class="id-sig-line"></div>
-                    <div class="id-sig-text">Principal signature</div>
+                    <div class="id-sig-text"><?= e($principalSigTitle) ?></div>
                 </div>
             </div>
             <div class="id-card-back-footer"></div>

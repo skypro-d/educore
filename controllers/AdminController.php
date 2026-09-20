@@ -961,6 +961,35 @@ final class AdminController
 
         $this->saveBrandFile('school_logo', 'branding');
         $this->saveBrandFile('favicon', 'branding');
+        $this->saveBrandFile('principal_signature', 'branding');
+
+        // Handle canvas drawn signature if provided
+        $sigData = trim((string) ($_POST['principal_signature_data'] ?? ''));
+        if ($sigData !== '' && str_starts_with($sigData, 'data:image/')) {
+            $commaPos = strpos($sigData, ',');
+            if ($commaPos !== false) {
+                $base64Raw = substr($sigData, $commaPos + 1);
+                $sigDecoded = base64_decode($base64Raw);
+                if ($sigDecoded !== false && strlen($sigDecoded) > 50) {
+                    $filename = 'branding/sig_' . time() . '_' . bin2hex(random_bytes(3)) . '.png';
+                    $targetPath = __DIR__ . '/../uploads/' . $filename;
+                    if (!is_dir(dirname($targetPath))) {
+                        mkdir(dirname($targetPath), 0755, true);
+                    }
+                    if (file_put_contents($targetPath, $sigDecoded)) {
+                        $stmt = $this->db->prepare('INSERT INTO app_configs (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');
+                        $stmt->execute(['principal_signature', $filename]);
+                    }
+                }
+            }
+        }
+
+        // Handle signature removal if requested
+        if (!empty($_POST['remove_principal_signature'])) {
+            $stmt = $this->db->prepare('UPDATE app_configs SET setting_value="" WHERE setting_key="principal_signature"');
+            $stmt->execute();
+        }
+
         flash('success', 'Settings updated.');
 
         $activeTab = trim((string) ($_POST['active_tab'] ?? ''));

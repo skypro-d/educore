@@ -330,6 +330,57 @@ $activeWebsite = school_website_url();
                 </div>
             </div>
 
+            <!-- Principal / Authorized Signature for Student ID Card & Documents -->
+            <div class="p-3 mb-4 rounded-3 border bg-light">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <h6 class="fw-bold text-dark mb-1"><i class="ti ti-signature text-primary me-1"></i> Principal / Authorized Signature (Student ID Card &amp; Certificates)</h6>
+                        <p class="small text-muted mb-0">Upload or draw the Principal's official signature to appear automatically on all Student ID Cards, admission letters, and result sheets.</p>
+                    </div>
+                    <?php if (!empty($map['principal_signature'])): ?>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 rounded-pill">
+                            <i class="ti ti-check me-1"></i> Signature Active
+                        </span>
+                    <?php endif; ?>
+                </div>
+
+                <div class="row g-3 align-items-start">
+                    <div class="col-md-5">
+                        <label class="form-label fw-semibold small text-secondary">Signature Title / Designation</label>
+                        <input class="form-control mb-2" name="settings[principal_signature_title]" value="<?= e($map['principal_signature_title'] ?? 'Principal signature') ?>" placeholder="e.g. Principal signature or Head of School">
+                        
+                        <label class="form-label fw-semibold small text-secondary">Upload Signature Image (PNG / JPG / WEBP)</label>
+                        <input class="form-control form-control-sm" type="file" name="principal_signature" accept=".png,.jpg,.jpeg,.webp">
+                        <div class="form-text text-muted" style="font-size:11px;">Transparent PNG with dark ink is recommended.</div>
+
+                        <?php if (!empty($map['principal_signature'])): ?>
+                            <div class="mt-3 p-2 rounded-2 bg-white border d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="<?= url('uploads/' . $map['principal_signature']) ?>" alt="Principal Signature" style="max-height: 42px; max-width: 140px; object-fit: contain;">
+                                    <span class="small text-muted">Current Active</span>
+                                </div>
+                                <div class="form-check m-0">
+                                    <input class="form-check-input" type="checkbox" name="remove_principal_signature" value="1" id="removeSigCheck">
+                                    <label class="form-check-label text-danger small fw-semibold" for="removeSigCheck">Remove</label>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="col-md-7">
+                        <label class="form-label fw-semibold small text-secondary d-flex justify-content-between">
+                            <span>Or Draw Signature Live on Screen:</span>
+                            <button type="button" class="btn btn-xs btn-outline-danger" onclick="clearSignaturePad()"><i class="ti ti-eraser me-1"></i>Clear Pad</button>
+                        </label>
+                        <div style="background: #ffffff; border: 2px dashed #cbd5e1; border-radius: 8px; position: relative; touch-action: none;">
+                            <canvas id="sigCanvas" width="450" height="120" style="width: 100%; height: 120px; display: block; cursor: crosshair;"></canvas>
+                            <input type="hidden" name="principal_signature_data" id="sigDataInput">
+                        </div>
+                        <div class="form-text text-muted" style="font-size:11px;">Draw using mouse, stylus pen, or your finger on mobile/tablet. Click "Save Settings" below to apply.</div>
+                    </div>
+                </div>
+            </div>
+
             <h6 class="fw-bold text-secondary mb-3"><i class="ti ti-color-swatch me-1"></i> Color Palette &amp; Theme Tokens</h6>
             <?php 
             $colors = [
@@ -939,5 +990,84 @@ function syncSettingsIdWithBrand() {
     const brandColorInput = document.querySelector('input[name="settings[primary_color]"]');
     const brandColor = brandColorInput ? brandColorInput.value : '#0b3d91';
     applySettingsIdPreset(brandColor, brandColor, '#0f172a');
+}
+
+// ── Signature Pad Canvas Handler ──
+let sigCanvas, sigCtx, isDrawing = false, hasDrawnSig = false;
+
+document.addEventListener('DOMContentLoaded', function() {
+    sigCanvas = document.getElementById('sigCanvas');
+    if (!sigCanvas) return;
+    sigCtx = sigCanvas.getContext('2d');
+    sigCtx.strokeStyle = '#0f172a';
+    sigCtx.lineWidth = 2.5;
+    sigCtx.lineCap = 'round';
+    sigCtx.lineJoin = 'round';
+
+    function getCoords(e) {
+        const rect = sigCanvas.getBoundingClientRect();
+        const scaleX = sigCanvas.width / rect.width;
+        const scaleY = sigCanvas.height / rect.height;
+        let clientX, clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        return {
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY
+        };
+    }
+
+    function startDraw(e) {
+        isDrawing = true;
+        hasDrawnSig = true;
+        const p = getCoords(e);
+        sigCtx.beginPath();
+        sigCtx.moveTo(p.x, p.y);
+        e.preventDefault();
+    }
+
+    function drawMove(e) {
+        if (!isDrawing) return;
+        const p = getCoords(e);
+        sigCtx.lineTo(p.x, p.y);
+        sigCtx.stroke();
+        updateSigData();
+        e.preventDefault();
+    }
+
+    function endDraw() {
+        if (isDrawing) {
+            isDrawing = false;
+            updateSigData();
+        }
+    }
+
+    function updateSigData() {
+        const input = document.getElementById('sigDataInput');
+        if (input && hasDrawnSig) {
+            input.value = sigCanvas.toDataURL('image/png');
+        }
+    }
+
+    sigCanvas.addEventListener('mousedown', startDraw);
+    sigCanvas.addEventListener('mousemove', drawMove);
+    window.addEventListener('mouseup', endDraw);
+
+    sigCanvas.addEventListener('touchstart', startDraw, { passive: false });
+    sigCanvas.addEventListener('touchmove', drawMove, { passive: false });
+    window.addEventListener('touchend', endDraw);
+});
+
+function clearSignaturePad() {
+    if (!sigCanvas || !sigCtx) return;
+    sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+    hasDrawnSig = false;
+    const input = document.getElementById('sigDataInput');
+    if (input) input.value = '';
 }
 </script>
