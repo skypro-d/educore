@@ -802,19 +802,44 @@ function parent_linked_children(): array
     $phone = trim((string) ($_SESSION['parent']['phone'] ?? ''));
     $currentId = (int) ($_SESSION['parent']['applicant_id'] ?? 0);
 
+    $whereClauses = [];
+    $params = [];
+
+    if ($email !== '') {
+        $whereClauses[] = "(pa.email = ? AND pa.email != '')";
+        $params[] = $email;
+        $whereClauses[] = "(a.parent_email = ? AND a.parent_email != '')";
+        $params[] = $email;
+    }
+
+    if ($phone !== '') {
+        $whereClauses[] = "(pa.phone = ? AND pa.phone != '')";
+        $params[] = $phone;
+        $whereClauses[] = "(a.parent_phone = ? AND a.parent_phone != '')";
+        $params[] = $phone;
+    }
+
+    if ($currentId > 0) {
+        $whereClauses[] = "a.id = ?";
+        $params[] = $currentId;
+    }
+
+    if (empty($whereClauses)) {
+        return [];
+    }
+
     $sql = "SELECT DISTINCT a.id, a.first_name, a.last_name, a.middle_name, a.application_number,
                             a.admission_number, a.status, a.passport_photo, a.class_id, c.name AS class_name
             FROM applicants a
             LEFT JOIN classes c ON c.id = a.class_id
             LEFT JOIN parent_accounts pa ON pa.applicant_id = a.id
-            WHERE (pa.email = :email AND pa.email != '')
-               OR (a.parent_email = :email AND a.parent_email != '')
-               OR (:phone != '' AND (pa.phone = :phone OR a.parent_phone = :phone))
-               OR a.id = :cur_id
+            WHERE " . implode(' OR ', $whereClauses) . "
             ORDER BY a.first_name ASC";
+
     $stmt = $db->prepare($sql);
-    $stmt->execute(['email' => $email, 'phone' => $phone, 'cur_id' => $currentId]);
+    $stmt->execute($params);
     return $stmt->fetchAll();
 }
+
 
 
