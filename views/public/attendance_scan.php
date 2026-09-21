@@ -1,17 +1,22 @@
 <?php
 // $student is passed in from PublicController::attendanceScan()
+$isStaff = !empty($student['is_staff']);
 $name = e(trim(($student['first_name'] ?? '') . ' ' . ($student['last_name'] ?? '')));
 $admNo = e($student['admission_number'] ?? '');
 $class = e($student['class_name'] ?? '');
+$staffId = e($student['staff_id'] ?? '');
+$roleTitle = e(!empty($student['role_title']) ? ucwords(str_replace('_', ' ', $student['role_title'])) : ($student['role'] ?? 'Staff Member'));
+$department = e($student['department'] ?? 'Academics');
 $photo = !empty($student['passport_photo']) ? url('uploads/' . $student['passport_photo']) : null;
 $status = $student['scan_status'] ?? 'success'; // 'success', 'already', 'error'
+$resolvedState = e($student['status'] ?? 'Present');
 ?>
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Attendance Scan – EduCore</title>
+<title><?= $isStaff ? 'Staff' : 'Student' ?> Attendance Scan – EduCore</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -75,14 +80,15 @@ body {
 .badge-already { background: rgba(251,191,36,.2); color: #fcd34d; }
 .badge-error   { background: rgba(239,68,68,.2);  color: #f87171; }
 .student-name {
-    font-size: 1.5rem;
+    font-size: 1.45rem;
     font-weight: 900;
     color: #ffffff;
     margin-bottom: .4rem;
+    text-transform: uppercase;
 }
 .student-meta {
     font-size: .85rem;
-    color: rgba(255,255,255,.45);
+    color: rgba(255,255,255,.55);
     margin-bottom: 1.5rem;
     line-height: 1.6;
 }
@@ -110,18 +116,23 @@ body {
     <?php else: ?>
         <div class="icon-wrap success">✓</div>
     <?php endif; ?>
-    <span class="status-badge badge-success">✓ Attendance Marked</span>
+    <span class="status-badge badge-success">✓ <?= $isStaff ? 'Staff Arrival Logged (' . $resolvedState . ')' : 'Attendance Marked' ?></span>
     <div class="student-name"><?= $name ?></div>
     <div class="student-meta">
-        Admission No: <strong style="color:rgba(255,255,255,.7)"><?= $admNo ?></strong><br>
-        Class: <strong style="color:rgba(255,255,255,.7)"><?= $class ?></strong>
+        <?php if ($isStaff): ?>
+            Staff ID: <strong style="color:rgba(255,255,255,.85)"><?= $staffId ?></strong><br>
+            Designation: <strong style="color:rgba(255,255,255,.85)"><?= $roleTitle ?> (<?= $department ?>)</strong>
+        <?php else: ?>
+            Admission No: <strong style="color:rgba(255,255,255,.85)"><?= $admNo ?></strong><br>
+            Class: <strong style="color:rgba(255,255,255,.85)"><?= $class ?></strong>
+        <?php endif; ?>
     </div>
     <div class="time-block">
-        <div class="time-label">Time In</div>
+        <div class="time-label">Arrival Time (Time In)</div>
         <div class="time-value"><?= date('h:i A') ?></div>
         <div class="date-value"><?= date('l, d F Y') ?></div>
     </div>
-    <p class="message-text">Your attendance has been successfully recorded for today.</p>
+    <p class="message-text">Welcome! Your attendance has been successfully logged for today.</p>
 
 <?php elseif ($status === 'already'): ?>
 
@@ -130,18 +141,23 @@ body {
     <?php else: ?>
         <div class="icon-wrap already">⚠</div>
     <?php endif; ?>
-    <span class="status-badge badge-already">Already Recorded</span>
+    <span class="status-badge badge-already">Already Checked In</span>
     <div class="student-name"><?= $name ?></div>
     <div class="student-meta">
-        Admission No: <strong style="color:rgba(255,255,255,.7)"><?= $admNo ?></strong><br>
-        Class: <strong style="color:rgba(255,255,255,.7)"><?= $class ?></strong>
+        <?php if ($isStaff): ?>
+            Staff ID: <strong style="color:rgba(255,255,255,.85)"><?= $staffId ?></strong><br>
+            Designation: <strong style="color:rgba(255,255,255,.85)"><?= $roleTitle ?> (<?= $department ?>)</strong>
+        <?php else: ?>
+            Admission No: <strong style="color:rgba(255,255,255,.85)"><?= $admNo ?></strong><br>
+            Class: <strong style="color:rgba(255,255,255,.85)"><?= $class ?></strong>
+        <?php endif; ?>
     </div>
     <div class="time-block">
-        <div class="time-label">Today's Date</div>
+        <div class="time-label">Today's Check-In</div>
         <div class="time-value"><?= date('h:i A') ?></div>
         <div class="date-value"><?= date('l, d F Y') ?></div>
     </div>
-    <p class="message-text">Your attendance has already been recorded today. No duplicate entry needed.</p>
+    <p class="message-text">Your arrival was already recorded today. No duplicate scan required.</p>
 
 <?php elseif ($status === 'denied'): ?>
 
@@ -149,8 +165,11 @@ body {
     <span class="status-badge badge-error">Scan Denied</span>
     <div class="student-name"><?= $name ?></div>
     <div class="student-meta">
-        Admission No: <strong style="color:rgba(255,255,255,.7)"><?= $admNo ?></strong><br>
-        Class: <strong style="color:rgba(255,255,255,.7)"><?= $class ?></strong>
+        <?php if ($isStaff): ?>
+            Staff ID: <strong style="color:rgba(255,255,255,.85)"><?= $staffId ?></strong>
+        <?php else: ?>
+            Admission No: <strong style="color:rgba(255,255,255,.85)"><?= $admNo ?></strong>
+        <?php endif; ?>
     </div>
     <div class="time-block">
         <div class="time-label">Time Scanned</div>
@@ -163,8 +182,8 @@ body {
 
     <div class="icon-wrap error">✕</div>
     <span class="status-badge badge-error">Error</span>
-    <div class="student-name">Student Not Found</div>
-    <p class="message-text" style="margin-top:1rem">This QR code is invalid or the student record could not be found. Please contact administration.</p>
+    <div class="student-name">Record Not Found</div>
+    <p class="message-text" style="margin-top:1rem"><?= e($student['error_message'] ?? 'This QR code is invalid or the record could not be found. Please contact administration.') ?></p>
 
 <?php endif; ?>
 

@@ -1865,21 +1865,37 @@ final class AdminController
         require_permission('staff');
         verify_csrf();
 
-        $id            = (int) ($_POST['id'] ?? 0);
-        $firstName     = trim($_POST['first_name'] ?? '');
-        $lastName      = trim($_POST['last_name'] ?? '');
-        $email         = trim($_POST['email'] ?? '');
-        $phone         = trim($_POST['phone'] ?? '');
-        $roleId        = !empty($_POST['role_id']) ? (int) $_POST['role_id'] : null;
-        $roleStr       = trim($_POST['role'] ?? 'Teacher');
-        $department    = trim($_POST['department'] ?? '');
-        $status        = $_POST['status'] ?? 'Active';
-        $qualification = trim($_POST['qualification'] ?? '');
-        $salary        = $_POST['salary'] !== '' ? (float) $_POST['salary'] : null;
+        $id                     = (int) ($_POST['id'] ?? 0);
+        $firstName              = trim($_POST['first_name'] ?? '');
+        $lastName               = trim($_POST['last_name'] ?? '');
+        $email                  = trim($_POST['email'] ?? '');
+        $phone                  = trim($_POST['phone'] ?? '');
+        $roleId                 = !empty($_POST['role_id']) ? (int) $_POST['role_id'] : null;
+        $roleStr                = trim($_POST['role'] ?? 'Teacher');
+        $department             = trim($_POST['department'] ?? '');
+        $status                 = $_POST['status'] ?? 'Active';
+        $qualification          = trim($_POST['qualification'] ?? '');
+        $salary                 = $_POST['salary'] !== '' ? (float) $_POST['salary'] : null;
+        $gender                 = $_POST['gender'] ?? 'Male';
+        $bloodGroup             = trim($_POST['blood_group'] ?? '');
+        $emergencyContactName   = trim($_POST['emergency_contact_name'] ?? '');
+        $emergencyContactPhone  = trim($_POST['emergency_contact_phone'] ?? '');
+        $address                = trim($_POST['address'] ?? '');
 
         if ($firstName === '' || $lastName === '' || $phone === '') {
             flash('danger', 'First Name, Last Name, and Phone number are required.');
             redirect('admin/staff');
+        }
+
+        // Handle passport photo upload if provided
+        $passportPhoto = null;
+        if (!empty($_FILES['passport_photo']['name']) && $_FILES['passport_photo']['error'] === UPLOAD_ERR_OK) {
+            try {
+                $passportPhoto = upload_file('passport_photo', 'passports');
+            } catch (Throwable $e) {
+                flash('danger', 'Photo upload failed: ' . $e->getMessage());
+                redirect('admin/staff');
+            }
         }
 
         // If role_id is provided, sync role string name
@@ -1903,23 +1919,30 @@ final class AdminController
             $prev->execute([$id]);
             $prevStaff = $prev->fetch(PDO::FETCH_ASSOC);
 
+            $photoToSave = $passportPhoto ?: ($prevStaff['passport_photo'] ?? null);
+
             $stmt = $this->db->prepare(
-                "UPDATE staff SET first_name=?, last_name=?, email=?, phone=?, role=?, role_id=?, department=?, status=?, qualification=?, salary=?, updated_at=NOW() WHERE id=?"
+                "UPDATE staff SET first_name=?, last_name=?, email=?, phone=?, role=?, role_id=?, department=?, status=?, qualification=?, salary=?, gender=?, blood_group=?, emergency_contact_name=?, emergency_contact_phone=?, address=?, passport_photo=?, updated_at=NOW() WHERE id=?"
             );
-            $stmt->execute([$firstName, $lastName, $email ?: null, $phone, $roleStr, $roleId, $department ?: null, $status, $qualification, $salary, $id]);
+            $stmt->execute([$firstName, $lastName, $email ?: null, $phone, $roleStr, $roleId, $department ?: null, $status, $qualification, $salary, $gender, $bloodGroup ?: null, $emergencyContactName ?: null, $emergencyContactPhone ?: null, $address ?: null, $photoToSave, $id]);
 
             StaffAudit::log('staff.updated', 'staff', $id, "Updated staff profile for {$firstName} {$lastName}", json_encode($prevStaff), json_encode($_POST));
             flash('success', 'Staff profile updated successfully.');
         } else {
             $staffId = generate_staff_id($this->db);
+            $token = 'ATTENDANCE-STF-NEW-' . substr(md5(uniqid('', true)), 0, 10);
             $stmt = $this->db->prepare(
-                "INSERT INTO staff (staff_id, first_name, last_name, email, phone, role, role_id, department, status, qualification, salary)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO staff (staff_id, qr_data, first_name, last_name, email, phone, role, role_id, department, status, qualification, salary, gender, blood_group, emergency_contact_name, emergency_contact_phone, address, passport_photo)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->execute([$staffId, $firstName, $lastName, $email ?: null, $phone, $roleStr, $roleId, $department ?: null, $status, $qualification, $salary]);
+            $stmt->execute([$staffId, $token, $firstName, $lastName, $email ?: null, $phone, $roleStr, $roleId, $department ?: null, $status, $qualification, $salary, $gender, $bloodGroup ?: null, $emergencyContactName ?: null, $emergencyContactPhone ?: null, $address ?: null, $passportPhoto]);
 
             $newStaffRowId = (int) $this->db->lastInsertId();
             if ($newStaffRowId > 0) {
+                // Ensure deterministic QR token with row ID
+                $finalToken = 'ATTENDANCE-STF-' . $newStaffRowId . '-' . substr(md5($staffId . '_' . $newStaffRowId), 0, 8);
+                $this->db->prepare("UPDATE staff SET qr_data = ? WHERE id = ?")->execute([$finalToken, $newStaffRowId]);
+
                 $username = str_replace('-', '', $staffId);
                 $tempPass = generate_temp_password();
                 $hashPass = password_hash($tempPass, PASSWORD_BCRYPT);
@@ -2272,6 +2295,176 @@ final class AdminController
             redirect('admin/applications');
         }
         render('admin/id_card', compact('student'), 'auth');
+    }
+
+    /* ─── Staff ID Card (Admin Only) ──────────────────────────────── */
+
+    public function staffIdCard(int $id): void
+    {
+        require_admin();
+        $stmt = $this->db->prepare(
+            "SELECT s.*, r.name AS role_title, r.description AS role_desc
+             FROM staff s
+             LEFT JOIN roles r ON r.id = s.role_id
+             WHERE s.id = ? LIMIT 1"
+        );
+        $stmt->execute([$id]);
+        $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$staff) {
+            flash('danger', 'Staff member not found.');
+            redirect('admin/staff');
+        }
+
+        // Ensure staff has a unique qr_data token
+        if (empty($staff['qr_data'])) {
+            $token = 'ATTENDANCE-STF-' . $staff['id'] . '-' . substr(md5($staff['staff_id'] . '_' . $staff['id']), 0, 8);
+            $this->db->prepare("UPDATE staff SET qr_data = ? WHERE id = ?")->execute([$token, $staff['id']]);
+            $staff['qr_data'] = $token;
+        }
+
+        render('admin/staff_id_card', compact('staff'), 'auth');
+    }
+
+    /* ─── Staff Attendance Management ─────────────────────────────── */
+
+    public function staffAttendance(): void
+    {
+        require_admin();
+        $date = $_GET['date'] ?? date('Y-m-d');
+        $departmentFilter = trim($_GET['department'] ?? '');
+
+        // Fetch list of departments for filter dropdown
+        $deptStmt = $this->db->query("SELECT DISTINCT department FROM staff WHERE department IS NOT NULL AND department != '' ORDER BY department ASC");
+        $departments = $deptStmt ? $deptStmt->fetchAll(PDO::FETCH_COLUMN) : [];
+
+        // Build query for staff list
+        $sql = "SELECT s.*, r.name AS role_title
+                FROM staff s
+                LEFT JOIN roles r ON r.id = s.role_id
+                WHERE (s.status = 'Active' OR s.status = 'On Leave')";
+        $params = [];
+
+        if ($departmentFilter !== '') {
+            $sql .= " AND s.department = ?";
+            $params[] = $departmentFilter;
+        }
+
+        $sql .= " ORDER BY s.first_name ASC, s.last_name ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $staffList = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch today's attendance logs for staff
+        $attStmt = $this->db->prepare(
+            "SELECT sa.* FROM staff_attendance sa WHERE sa.date = ?"
+        );
+        $attStmt->execute([$date]);
+        $attendanceLogs = $attStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $existingMap = [];
+        foreach ($attendanceLogs as $row) {
+            $existingMap[$row['staff_id']] = $row;
+        }
+
+        // Calculate summary statistics
+        $totalStaff = count($staffList);
+        $presentCount = 0;
+        $lateCount = 0;
+        $absentCount = 0;
+
+        foreach ($staffList as $st) {
+            $att = $existingMap[$st['id']] ?? null;
+            if ($att) {
+                if ($att['status'] === 'Present') {
+                    $presentCount++;
+                } elseif ($att['status'] === 'Late') {
+                    $presentCount++;
+                    $lateCount++;
+                } elseif ($att['status'] === 'Absent') {
+                    $absentCount++;
+                }
+            } else {
+                $absentCount++;
+            }
+        }
+
+        $stats = [
+            'total_staff'   => $totalStaff,
+            'present_count' => $presentCount,
+            'late_count'    => $lateCount,
+            'absent_count'  => $absentCount
+        ];
+
+        render('admin/staff_attendance', compact('staffList', 'existingMap', 'date', 'departmentFilter', 'departments', 'stats'), 'admin');
+    }
+
+    public function saveStaffAttendance(): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $staffId = (int) ($_POST['staff_id'] ?? 0);
+        $date    = trim($_POST['date'] ?? date('Y-m-d'));
+        $status  = trim($_POST['status'] ?? 'Present');
+        $timeIn  = !empty($_POST['time_in']) ? trim($_POST['time_in']) : null;
+        $timeOut = !empty($_POST['time_out']) ? trim($_POST['time_out']) : null;
+        $remark  = trim($_POST['remark'] ?? '');
+        $adminId = (int) ($_SESSION['admin']['id'] ?? 0);
+
+        if ($staffId > 0) {
+            $stmt = $this->db->prepare(
+                "INSERT INTO staff_attendance (staff_id, school_id, date, time_in, time_out, status, scan_method, remark, marked_by, created_at)
+                 VALUES (?, 1, ?, ?, ?, ?, 'manual', ?, ?, NOW())
+                 ON DUPLICATE KEY UPDATE
+                    time_in = COALESCE(VALUES(time_in), time_in),
+                    time_out = VALUES(time_out),
+                    status = VALUES(status),
+                    remark = VALUES(remark),
+                    marked_by = VALUES(marked_by)"
+            );
+            $stmt->execute([$staffId, $date, $timeIn, $timeOut, $status, $remark ?: null, $adminId ?: null]);
+
+            flash('success', 'Staff attendance updated for ' . date('M j, Y', strtotime($date)) . '.');
+        }
+
+        redirect('admin/staff-attendance?date=' . urlencode($date));
+    }
+
+    public function staffAttendanceReport(): void
+    {
+        require_admin();
+        $selectedMonth = (int) ($_GET['month'] ?? date('n'));
+        $selectedYear  = (int) ($_GET['year'] ?? date('Y'));
+        $departmentFilter = trim($_GET['department'] ?? '');
+
+        // Fetch list of departments
+        $deptStmt = $this->db->query("SELECT DISTINCT department FROM staff WHERE department IS NOT NULL AND department != '' ORDER BY department ASC");
+        $departments = $deptStmt ? $deptStmt->fetchAll(PDO::FETCH_COLUMN) : [];
+
+        $sql = "SELECT s.id, s.staff_id, s.first_name, s.last_name, s.department, s.passport_photo, r.name AS role_title, s.role,
+                       SUM(CASE WHEN sa.status = 'Present' THEN 1 ELSE 0 END) AS present_count,
+                       SUM(CASE WHEN sa.status = 'Late' THEN 1 ELSE 0 END) AS late_count,
+                       SUM(CASE WHEN sa.status = 'Absent' THEN 1 ELSE 0 END) AS absent_count,
+                       SUM(CASE WHEN sa.status = 'On Leave' THEN 1 ELSE 0 END) AS leave_count
+                FROM staff s
+                LEFT JOIN roles r ON r.id = s.role_id
+                LEFT JOIN staff_attendance sa ON sa.staff_id = s.id
+                    AND MONTH(sa.date) = ? AND YEAR(sa.date) = ?
+                WHERE (s.status = 'Active' OR s.status = 'On Leave')";
+        $params = [$selectedMonth, $selectedYear];
+
+        if ($departmentFilter !== '') {
+            $sql .= " AND s.department = ?";
+            $params[] = $departmentFilter;
+        }
+
+        $sql .= " GROUP BY s.id ORDER BY s.first_name ASC, s.last_name ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $report = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        render('admin/staff_attendance_report', compact('report', 'selectedMonth', 'selectedYear', 'departments', 'departmentFilter'), 'admin');
     }
 
     /* ─── Admission / Acceptance Letter ───────────────────────────── */

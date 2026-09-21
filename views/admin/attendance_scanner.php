@@ -27,7 +27,7 @@ $pageTitle = 'Attendance Scanner Terminal';
             <i class="ti ti-volume text-success me-1" id="soundIcon"></i> Sound: <span id="soundText" class="fw-semibold">ON</span>
         </button>
         <button type="button" class="btn btn-primary btn-sm rounded-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#testQrModal">
-            <i class="ti ti-qrcode me-1"></i> Scan Test Student QR
+            <i class="ti ti-qrcode me-1"></i> Scan Test Student / Staff QR
         </button>
         <a href="<?= url('admin/attendance') ?>" class="btn btn-outline-primary btn-sm rounded-3 shadow-sm">
             <i class="ti ti-table me-1"></i> Daily Sheet
@@ -107,9 +107,9 @@ $pageTitle = 'Attendance Scanner Terminal';
                     <div class="scan-icon-wrap mx-auto mb-3">
                         <i class="ti ti-qrcode fs-1 text-primary"></i>
                     </div>
-                    <h4 class="fw-bold text-dark mb-1" id="scanPromptTitle">SCAN STUDENT QR CODE</h4>
+                    <h4 class="fw-bold text-dark mb-1" id="scanPromptTitle">SCAN STUDENT OR STAFF QR CODE</h4>
                     <p class="text-muted small mb-0" id="scanPromptDesc">
-                        Present EduCore ID card or mobile QR to the <strong>HIPPOINT X7-1000</strong> scanner.
+                        Present EduCore ID card or mobile QR code to the <strong>HIPPOINT X7-1000</strong> scanner.
                     </p>
                     <div class="mt-3">
                         <span class="badge bg-light text-muted border px-3 py-1 font-monospace" style="font-size: 11px;">
@@ -245,45 +245,93 @@ $pageTitle = 'Attendance Scanner Terminal';
         </div>
 </div>
 
-<!-- TEST STUDENT QR MODAL -->
+<!-- TEST STUDENT / STAFF QR MODAL -->
 <div class="modal fade" id="testQrModal" tabindex="-1" aria-labelledby="testQrModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content rounded-4 border-0 shadow-lg">
             <div class="modal-header border-bottom py-3 px-4">
                 <h5 class="modal-title fw-bold text-dark" id="testQrModalLabel">
-                    <i class="ti ti-qrcode text-primary me-2"></i>Live Test Student QR Codes
+                    <i class="ti ti-qrcode text-primary me-2"></i>Live Test QR Codes (Students &amp; Staff)
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4 text-center">
-                <p class="text-muted small mb-4">
+                <p class="text-muted small mb-3">
                     Point your <strong>HIPPOINT X7-1000</strong> scanner directly at any QR code on this screen.
                     The scanner will beep, dismiss this modal automatically, and record attendance in real-time.
                 </p>
 
-                <div class="row g-3 justify-content-center">
-                    <?php if (!empty($sampleStudents)): ?>
-                        <?php foreach ($sampleStudents as $idx => $st):
-                            $sName = trim($st['first_name'] . ' ' . $st['last_name']);
-                            $qrVal = !empty($st['qr_data']) ? $st['qr_data'] : ($st['admission_number'] ?: 'ATTENDANCE-STD-' . $st['id']);
-                            $qrImgSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=4&data=' . urlencode($qrVal);
-                        ?>
-                            <div class="col-12 col-md-6 col-lg-3">
-                                <div class="card border rounded-3 p-3 text-center bg-light h-100 shadow-2xs">
-                                    <div class="bg-white p-2 rounded-3 border mb-2 mx-auto d-inline-block shadow-xs">
-                                        <img src="<?= $qrImgSrc ?>" alt="QR for <?= e($sName) ?>" style="width: 130px; height: 130px; display: block;">
+                <!-- Nav Tabs for Students vs Staff -->
+                <ul class="nav nav-pills justify-content-center mb-4 gap-2" id="testQrTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active rounded-pill px-3 py-1 small fw-semibold" id="tab-students-tab" data-bs-toggle="pill" data-bs-target="#tab-students" type="button" role="tab" aria-controls="tab-students" aria-selected="true">
+                            <i class="ti ti-school me-1"></i> Students (<?= count($sampleStudents ?? []) ?>)
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link rounded-pill px-3 py-1 small fw-semibold" id="tab-staff-tab" data-bs-toggle="pill" data-bs-target="#tab-staff" type="button" role="tab" aria-controls="tab-staff" aria-selected="false">
+                            <i class="ti ti-user-check me-1"></i> Staff / Faculty (<?= count($sampleStaff ?? []) ?>)
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="testQrTabsContent">
+                    <!-- Students Tab -->
+                    <div class="tab-pane fade show active" id="tab-students" role="tabpanel" aria-labelledby="tab-students-tab">
+                        <div class="row g-3 justify-content-center">
+                            <?php if (!empty($sampleStudents)): ?>
+                                <?php foreach ($sampleStudents as $idx => $st):
+                                    $sName = trim($st['first_name'] . ' ' . $st['last_name']);
+                                    $qrVal = !empty($st['qr_data']) ? $st['qr_data'] : ($st['admission_number'] ?: 'ATTENDANCE-STD-' . $st['id']);
+                                    $qrImgSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=4&data=' . urlencode($qrVal);
+                                ?>
+                                    <div class="col-12 col-md-6 col-lg-3">
+                                        <div class="card border rounded-3 p-3 text-center bg-light h-100 shadow-2xs">
+                                            <div class="bg-white p-2 rounded-3 border mb-2 mx-auto d-inline-block shadow-xs">
+                                                <img src="<?= $qrImgSrc ?>" alt="QR for <?= e($sName) ?>" style="width: 120px; height: 120px; display: block;">
+                                            </div>
+                                            <div class="fw-bold text-dark small text-truncate" title="<?= e($sName) ?>"><?= e($sName) ?></div>
+                                            <div class="text-muted mb-1" style="font-size: 11px;"><?= e($st['class_name'] ?: 'Enrolled') ?></div>
+                                            <span class="badge bg-white text-secondary border font-monospace" style="font-size: 10px;">
+                                                <?= e($st['admission_number'] ?: $qrVal) ?>
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div class="fw-bold text-dark small text-truncate" title="<?= e($sName) ?>"><?= e($sName) ?></div>
-                                    <div class="text-muted mb-1" style="font-size: 11px;"><?= e($st['class_name'] ?: 'Enrolled') ?></div>
-                                    <span class="badge bg-white text-secondary border font-monospace" style="font-size: 10px;">
-                                        <?= e($st['admission_number'] ?: $qrVal) ?>
-                                    </span>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <div class="text-muted py-4 small">No active enrolled students found in system.</div>
-                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div class="text-muted py-4 small">No active enrolled students found in system.</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Staff Tab -->
+                    <div class="tab-pane fade" id="tab-staff" role="tabpanel" aria-labelledby="tab-staff-tab">
+                        <div class="row g-3 justify-content-center">
+                            <?php if (!empty($sampleStaff)): ?>
+                                <?php foreach ($sampleStaff as $idx => $stf):
+                                    $stfName = trim($stf['first_name'] . ' ' . $stf['last_name']);
+                                    $qrValStf = !empty($stf['qr_data']) ? $stf['qr_data'] : 'ATTENDANCE-STF-' . $stf['id'];
+                                    $qrImgSrcStf = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=4&data=' . urlencode($qrValStf);
+                                    $roleTitle = !empty($stf['role_title']) ? ucwords(str_replace('_', ' ', $stf['role_title'])) : ($stf['role'] ?? 'Staff Member');
+                                ?>
+                                    <div class="col-12 col-md-6 col-lg-3">
+                                        <div class="card border rounded-3 p-3 text-center bg-light h-100 shadow-2xs border-start border-3 border-teal" style="border-left-color:#0d9488 !important;">
+                                            <div class="bg-white p-2 rounded-3 border mb-2 mx-auto d-inline-block shadow-xs">
+                                                <img src="<?= $qrImgSrcStf ?>" alt="QR for <?= e($stfName) ?>" style="width: 120px; height: 120px; display: block;">
+                                            </div>
+                                            <div class="fw-bold text-dark small text-truncate" title="<?= e($stfName) ?>"><?= e($stfName) ?></div>
+                                            <div class="text-teal mb-1" style="font-size: 11px; color:#0d9488; font-weight:600;"><?= e($roleTitle) ?></div>
+                                            <span class="badge bg-white text-secondary border font-monospace" style="font-size: 10px;">
+                                                <?= e($stf['staff_id'] ?: 'ID: #' . $stf['id']) ?>
+                                            </span>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div class="text-muted py-4 small">No active staff members found in system.</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer bg-light border-top py-2 px-4 d-flex justify-content-between">
@@ -643,26 +691,44 @@ function showScanResultCard(data) {
     badge.className = `badge bg-${data.badge_status || 'secondary'}-subtle text-${data.badge_status || 'secondary'} fs-6 fw-bold px-4 py-2 rounded-pill shadow-xs`;
     badgeText.innerText = data.title || (data.success ? 'ATTENDANCE LOGGED' : 'SCAN ALERT');
 
-    // Student Info
-    const s = data.student || {};
-    document.getElementById('resultStudentName').innerText = s.name || 'Unknown Student';
-    document.getElementById('resultClassName').innerText = s.class_name || 'N/A';
-    document.getElementById('resultAdmNo').innerText = s.admission_number || 'N/A';
+    // Person Info (Student or Staff)
+    const isStaff = (data.person_type === 'staff' || data.person_type === 'Staff Member' || !!data.staff);
+    const person = isStaff ? (data.staff || data.student || {}) : (data.student || {});
+
+    document.getElementById('resultStudentName').innerText = person.name || (isStaff ? 'Staff Member' : 'Unknown Student');
+    document.getElementById('resultClassName').innerText = isStaff ? (person.role || person.department || 'Faculty') : (person.class_name || 'N/A');
+    document.getElementById('resultClassName').className = isStaff ? 'badge bg-teal text-white fw-semibold px-2 py-1' : 'badge bg-primary text-white fw-semibold px-2 py-1';
+    if (isStaff) {
+        document.getElementById('resultClassName').style.backgroundColor = '#0d9488';
+    } else {
+        document.getElementById('resultClassName').style.backgroundColor = '';
+    }
+
+    document.getElementById('resultAdmNo').innerText = person.staff_id || person.admission_number || 'N/A';
     document.getElementById('resultScanTime').innerText = data.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     document.getElementById('resultMessageText').innerText = data.message || '';
 
     // Photo or Initials
     const photoImg = document.getElementById('resultPhoto');
     const initialsDiv = document.getElementById('resultInitials');
-    if (s.photo) {
-        photoImg.src = s.photo;
+    if (person.photo) {
+        photoImg.src = person.photo;
         photoImg.style.display = 'block';
         initialsDiv.style.display = 'none';
     } else {
         photoImg.style.display = 'none';
         initialsDiv.style.display = 'flex';
-        const initials = (s.name || 'ST').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+        const initials = (person.name || (isStaff ? 'ST' : 'ST')).split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
         initialsDiv.innerText = initials || 'ST';
+        if (isStaff) {
+            initialsDiv.className = 'w-100 h-100 d-flex align-items-center justify-content-center bg-teal-subtle text-teal fw-bold fs-2';
+            initialsDiv.style.backgroundColor = '#ccfbf1';
+            initialsDiv.style.color = '#0f766e';
+        } else {
+            initialsDiv.className = 'w-100 h-100 d-flex align-items-center justify-content-center bg-primary-subtle text-primary fw-bold fs-2';
+            initialsDiv.style.backgroundColor = '';
+            initialsDiv.style.color = '';
+        }
     }
 
     // Border highlight
@@ -707,21 +773,26 @@ function prependRecentScan(data, type) {
     const notice = document.getElementById('noScansNotice');
     if (notice) notice.remove();
 
-    const s = data.student || {};
-    const initials = (s.name || 'ST').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+    const isStaff = (data.person_type === 'staff' || data.person_type === 'Staff Member' || !!data.staff);
+    const person = isStaff ? (data.staff || data.student || {}) : (data.student || {});
+    const initials = (person.name || (isStaff ? 'SF' : 'ST')).split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
     const isOut = (type === 'OUT');
 
     const item = document.createElement('div');
     item.className = 'list-group-item px-4 py-3 d-flex align-items-center justify-content-between border-bottom bg-success-subtle';
     item.style.transition = 'background 1.5s ease';
 
-    const photoHtml = s.photo
-        ? `<img src="${s.photo}" class="w-100 h-100 object-fit-cover" alt="${s.name}">`
-        : `<div class="w-100 h-100 d-flex align-items-center justify-content-center bg-primary-subtle text-primary fw-bold" style="font-size: 13px;">${initials}</div>`;
+    const photoHtml = person.photo
+        ? `<img src="${person.photo}" class="w-100 h-100 object-fit-cover" alt="${person.name}">`
+        : `<div class="w-100 h-100 d-flex align-items-center justify-content-center ${isStaff ? 'bg-teal-subtle text-teal' : 'bg-primary-subtle text-primary'} fw-bold" style="font-size: 13px; ${isStaff ? 'background:#ccfbf1; color:#0f766e;' : ''}">${initials}</div>`;
 
     const badgeHtml = isOut
         ? `<span class="badge bg-primary-subtle text-primary fw-semibold px-2 py-0" style="font-size: 10px;">OUT</span>`
         : `<span class="badge bg-success-subtle text-success fw-semibold px-2 py-0" style="font-size: 10px;">IN</span>`;
+
+    const tagBadge = isStaff
+        ? `<span class="badge bg-teal-subtle text-teal border px-1" style="background:#e6fffa; color:#0d9488;">Staff</span>`
+        : `<span class="badge bg-light text-secondary border px-1">${person.class_name || 'N/A'}</span>`;
 
     item.innerHTML = `
         <div class="d-flex align-items-center gap-3">
@@ -729,10 +800,10 @@ function prependRecentScan(data, type) {
                 ${photoHtml}
             </div>
             <div>
-                <div class="fw-bold text-dark small mb-0">${s.name || 'Student'}</div>
+                <div class="fw-bold text-dark small mb-0">${person.name || (isStaff ? 'Staff' : 'Student')}</div>
                 <div class="text-muted" style="font-size: 11px;">
-                    <span class="badge bg-light text-secondary border px-1">${s.class_name || 'N/A'}</span>
-                    <span class="ms-1 font-monospace">${s.admission_number || 'N/A'}</span>
+                    ${tagBadge}
+                    <span class="ms-1 font-monospace">${person.staff_id || person.admission_number || 'N/A'}</span>
                 </div>
             </div>
         </div>

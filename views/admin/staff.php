@@ -177,6 +177,12 @@
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size:13px; border-radius:8px;">
                                     <li>
+                                        <a class="dropdown-item text-primary font-weight-bold" href="<?= url('admin/staff/' . $s['id'] . '/id-card') ?>" target="_blank" style="font-weight:600;">
+                                            <i class="ti ti-id-badge-2 me-2"></i> Print Official ID Card
+                                        </a>
+                                    </li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
                                         <a class="dropdown-item" href="javascript:void(0)" onclick='openEditStaffModal(<?= json_encode($s, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)'>
                                             <i class="ti ti-edit text-primary me-2"></i> Edit Profile
                                         </a>
@@ -247,7 +253,7 @@
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="POST" action="<?= url('admin/staff') ?>" id="staffModalForm">
+            <form method="POST" action="<?= url('admin/staff') ?>" id="staffModalForm" enctype="multipart/form-data">
                 <?= csrf_field() ?>
                 <input type="hidden" name="id" id="modalStaffId" value="0">
                 <div class="modal-body p-4">
@@ -273,23 +279,62 @@
                             <label class="form-label" style="font-size:12px; font-weight:600;">Department</label>
                             <input type="text" name="department" id="modalDepartment" class="form-control" placeholder="e.g. Science / Mathematics / Administration">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label" style="font-size:12px; font-weight:600;">Contact Phone <span class="text-danger">*</span></label>
                             <input type="text" name="phone" id="modalPhone" required class="form-control" placeholder="e.g. 08012345678">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-5">
                             <label class="form-label" style="font-size:12px; font-weight:600;">Email Address</label>
                             <input type="email" name="email" id="modalEmail" class="form-control" placeholder="e.g. teacher@school.edu.ng">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" style="font-size:12px; font-weight:600;">Gender</label>
+                            <select name="gender" id="modalGender" class="form-select">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" style="font-size:12px; font-weight:600;">Blood Group</label>
+                            <select name="blood_group" id="modalBloodGroup" class="form-select">
+                                <option value="">-- Select --</option>
+                                <option value="A+">A+</option>
+                                <option value="A-">A-</option>
+                                <option value="B+">B+</option>
+                                <option value="B-">B-</option>
+                                <option value="AB+">AB+</option>
+                                <option value="AB-">AB-</option>
+                                <option value="O+">O+</option>
+                                <option value="O-">O-</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" style="font-size:12px; font-weight:600;">Emergency Contact Name</label>
+                            <input type="text" name="emergency_contact_name" id="modalEmergencyContactName" class="form-control" placeholder="Next of kin / Spouse">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" style="font-size:12px; font-weight:600;">Emergency Contact Phone</label>
+                            <input type="text" name="emergency_contact_phone" id="modalEmergencyContactPhone" class="form-control" placeholder="e.g. 08087654321">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label" style="font-size:12px; font-weight:600;">Residential Address</label>
+                            <input type="text" name="address" id="modalAddress" class="form-control" placeholder="e.g. 15 Campus Road, Ikeja, Lagos">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" style="font-size:12px; font-weight:600;">Passport Photo (ID Card &amp; Profile)</label>
+                            <input type="file" name="passport_photo" id="modalPassportPhoto" class="form-control" accept="image/*">
+                            <div class="form-text" style="font-size:11px;">Recommended: Square JPG/PNG photograph.</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" style="font-size:12px; font-weight:600;">Qualification</label>
                             <input type="text" name="qualification" id="modalQualification" class="form-control" placeholder="e.g. B.Sc Mathematics, PGDE">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-6">
                             <label class="form-label" style="font-size:12px; font-weight:600;">Monthly Salary (NGN)</label>
                             <input type="number" name="salary" id="modalSalary" min="0" step="500" class="form-control" placeholder="e.g. 150000">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-6">
                             <label class="form-label" style="font-size:12px; font-weight:600;">Status</label>
                             <select name="status" id="modalStatus" class="form-select">
                                 <option value="Active">Active</option>
@@ -516,9 +561,15 @@ function openAddStaffModal() {
     document.getElementById('modalEmail').value = '';
     document.getElementById('modalPhone').value = '';
     document.getElementById('modalDepartment').value = '';
+    document.getElementById('modalGender').value = 'Male';
+    document.getElementById('modalBloodGroup').value = '';
+    document.getElementById('modalEmergencyContactName').value = '';
+    document.getElementById('modalEmergencyContactPhone').value = '';
+    document.getElementById('modalAddress').value = '';
     document.getElementById('modalQualification').value = '';
     document.getElementById('modalSalary').value = '';
     document.getElementById('modalStatus').value = 'Active';
+    document.getElementById('modalPassportPhoto').value = '';
     new bootstrap.Modal(document.getElementById('staffFormModal')).show();
 }
 
@@ -530,9 +581,15 @@ function openEditStaffModal(staff) {
     document.getElementById('modalEmail').value = staff.email || '';
     document.getElementById('modalPhone').value = staff.phone || '';
     document.getElementById('modalDepartment').value = staff.department || '';
+    document.getElementById('modalGender').value = staff.gender || 'Male';
+    document.getElementById('modalBloodGroup').value = staff.blood_group || '';
+    document.getElementById('modalEmergencyContactName').value = staff.emergency_contact_name || '';
+    document.getElementById('modalEmergencyContactPhone').value = staff.emergency_contact_phone || '';
+    document.getElementById('modalAddress').value = staff.address || '';
     document.getElementById('modalQualification').value = staff.qualification || '';
     document.getElementById('modalSalary').value = staff.salary || '';
     document.getElementById('modalStatus').value = staff.status || 'Active';
+    document.getElementById('modalPassportPhoto').value = '';
     
     if (staff.role_id) {
         document.getElementById('modalRoleId').value = staff.role_id;

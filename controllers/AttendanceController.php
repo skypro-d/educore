@@ -233,6 +233,8 @@ final class AttendanceController
 
     /**
      * HIPPOINT X7-1000 USB QR Attendance Kiosk Scanner Page
+      /**
+     * HIPPOINT X7-1000 USB QR Attendance Kiosk Scanner Page
      */
     public function scanner(): void
     {
@@ -260,25 +262,59 @@ final class AttendanceController
         ];
         $stats['on_campus'] = max(0, ((int)$stats['checked_in']) - ((int)$stats['checked_out']));
 
-        // Recent 10 scans today
-        $recentStmt = $this->db->prepare(
+        // Staff stats today
+        $staffStatsStmt = $this->db->prepare(
+            "SELECT
+                COUNT(DISTINCT s.id) as total_staff,
+                SUM(CASE WHEN sa.id IS NOT NULL AND sa.status IN ('Present', 'Late') THEN 1 ELSE 0 END) as staff_checked_in,
+                SUM(CASE WHEN sa.id IS NOT NULL AND sa.time_out IS NOT NULL THEN 1 ELSE 0 END) as staff_checked_out,
+                SUM(CASE WHEN sa.status = 'Late' THEN 1 ELSE 0 END) as staff_late_count
+             FROM staff s
+             LEFT JOIN staff_attendance sa ON sa.staff_id = s.id AND sa.date = ?
+             WHERE s.status = 'Active'"
+        );
+        $staffStatsStmt->execute([$today]);
+        $staffStats = $staffStatsStmt->fetch(PDO::FETCH_ASSOC) ?: [
+            'total_staff'       => 0,
+            'staff_checked_in'  => 0,
+            'staff_checked_out' => 0,
+            'staff_late_count'  => 0,
+        ];
+
+        // Recent student scans
+        $studentScans = $this->db->prepare(
             "SELECT att.id as attendance_id, att.applicant_id, att.time_in, att.time_out, att.status, att.scan_method,
                     s.first_name, s.last_name, s.admission_number, s.application_number, s.passport_photo,
-                    c.name as class_name
+                    c.name as class_name, 'student' as person_type
              FROM attendance att
              JOIN applicants s ON s.id = att.applicant_id
              LEFT JOIN classes c ON c.id = s.class_id
-             WHERE att.date = ?
-             ORDER BY GREATEST(
-                 COALESCE(att.time_out, '00:00:00'),
-                 COALESCE(att.time_in, '00:00:00')
-             ) DESC, att.id DESC
-             LIMIT 10"
+             WHERE att.date = ?"
         );
-        $recentStmt->execute([$today]);
-        $recentScans = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+        $studentScans->execute([$today]);
+        $allStudentScans = $studentScans->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch a few enrolled students for live testing & QR preview
+        // Recent staff scans
+        $staffScans = $this->db->prepare(
+            "SELECT sa.id as attendance_id, sa.staff_id as applicant_id, sa.time_in, sa.time_out, sa.status, sa.scan_method,
+                    s.first_name, s.last_name, s.staff_id as admission_number, s.staff_id as application_number, s.passport_photo,
+                    COALESCE(s.department, 'Faculty') as class_name, 'staff' as person_type
+             FROM staff_attendance sa
+             JOIN staff s ON s.id = sa.staff_id
+             WHERE sa.date = ?"
+        );
+        $staffScans->execute([$today]);
+        $allStaffScans = $staffScans->fetchAll(PDO::FETCH_ASSOC);
+
+        $merged = array_merge($allStudentScans, $allStaffScans);
+        usort($merged, function ($a, $b) {
+            $tA = max($a['time_out'] ?? '00:00:00', $a['time_in'] ?? '00:00:00');
+            $tB = max($b['time_out'] ?? '00:00:00', $b['time_in'] ?? '00:00:00');
+            return strcmp($tB, $tA);
+        });
+        $recentScans = array_slice($merged, 0, 10);
+
+        // Fetch sample enrolled students
         $sampleStudentsStmt = $this->db->prepare(
             "SELECT a.id, a.first_name, a.last_name, a.admission_number, a.qr_data, c.name as class_name
              FROM applicants a
@@ -290,10 +326,22 @@ final class AttendanceController
         $sampleStudentsStmt->execute();
         $sampleStudents = $sampleStudentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Fetch sample staff members
+        $sampleStaffStmt = $this->db->prepare(
+            "SELECT s.id, s.first_name, s.last_name, s.staff_id, s.qr_data, s.department, r.name as role_title, s.role
+             FROM staff s
+             LEFT JOIN roles r ON r.id = s.role_id
+             WHERE s.status = 'Active'
+             ORDER BY s.id ASC
+             LIMIT 4"
+        );
+        $sampleStaffStmt->execute();
+        $sampleStaff = $sampleStaffStmt->fetchAll(PDO::FETCH_ASSOC);
+
         $debounceMins = (int) setting('attendance_debounce_minutes', 15);
         $autoResetSeconds = (int) setting('attendance_scanner_auto_reset_seconds', 3);
 
-        render('admin/attendance_scanner', compact('stats', 'recentScans', 'sampleStudents', 'today', 'debounceMins', 'autoResetSeconds'), 'admin');
+        render('admin/attendance_scanner', compact('stats', 'staffStats', 'recentScans', 'sampleStudents', 'sampleStaff', 'today', 'debounceMins', 'autoResetSeconds'), 'admin');
     }
 
     /**
@@ -330,7 +378,203 @@ final class AttendanceController
         $token = trim($token);
         $normalizedToken = str_replace('/', '-', $token);
 
-        // 1. Locate student by qr_data, normalized qr_data, admission number, or application number
+        // ── STEP 1: Check if the scanned token belongs to a STAFF MEMBER ──
+        $stmtStaff = $this->db->prepare(
+            "SELECT s.*, r.name AS role_title
+             FROM staff s
+             LEFT JOIN roles r ON r.id = s.role_id
+             WHERE (s.qr_data = ? OR s.qr_data = ? OR s.staff_id = ?)
+             LIMIT 1"
+        );
+        $stmtStaff->execute([$token, $normalizedToken, $token]);
+        $staffMember = $stmtStaff->fetch(PDO::FETCH_ASSOC);
+
+        if (!$staffMember && preg_match('/attendance[-_\/]stf[-_\/](\d+)/i', $rawCode, $mStaff)) {
+            $staffId = (int)$mStaff[1];
+            $stmtStaffId = $this->db->prepare(
+                "SELECT s.*, r.name AS role_title FROM staff s LEFT JOIN roles r ON r.id = s.role_id WHERE s.id = ? LIMIT 1"
+            );
+            $stmtStaffId->execute([$staffId]);
+            $staffMember = $stmtStaffId->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if ($staffMember) {
+            $staffId = (int) $staffMember['id'];
+            $today = date('Y-m-d');
+            $nowTime = date('H:i:s');
+            $adminId = (int) ($_SESSION['admin']['id'] ?? 0);
+            $staffName = trim($staffMember['first_name'] . ' ' . $staffMember['last_name']);
+            $roleTitle = !empty($staffMember['role_title']) ? ucwords(str_replace('_', ' ', $staffMember['role_title'])) : ($staffMember['role'] ?? 'Staff Member');
+            $debounceMins = (int) setting('attendance_debounce_minutes', 15);
+            if ($debounceMins < 1) $debounceMins = 1;
+
+            $staffInfo = [
+                'id'          => $staffId,
+                'name'        => $staffName,
+                'staff_id'    => $staffMember['staff_id'],
+                'role'        => $roleTitle,
+                'department'  => $staffMember['department'] ?: 'Academics',
+                'photo'       => !empty($staffMember['passport_photo']) ? url('uploads/' . $staffMember['passport_photo']) : null,
+                'person_type' => 'Staff Member',
+            ];
+
+            if ($staffMember['status'] !== 'Active') {
+                echo json_encode([
+                    'success'      => false,
+                    'person_type'  => 'staff',
+                    'action'       => 'inactive_staff',
+                    'badge_status' => 'danger',
+                    'title'        => 'Staff Inactive',
+                    'message'      => "Staff {$staffName} is currently marked as {$staffMember['status']}.",
+                    'staff'        => $staffInfo,
+                    'student'      => [
+                        'id' => $staffId,
+                        'name' => $staffName,
+                        'admission_number' => $staffMember['staff_id'],
+                        'class_name' => $roleTitle,
+                        'photo' => $staffInfo['photo']
+                    ]
+                ]);
+                exit;
+            }
+
+            // Check today's staff attendance record
+            $chkStaff = $this->db->prepare(
+                "SELECT id, staff_id, time_in, time_out, status FROM staff_attendance WHERE staff_id = ? AND date = ? LIMIT 1"
+            );
+            $chkStaff->execute([$staffId, $today]);
+            $existingStaff = $chkStaff->fetch(PDO::FETCH_ASSOC);
+
+            // CASE 1: No record today -> Check-in arrival
+            if (!$existingStaff) {
+                $resolvedStatus = AttendanceRules::resolveCurrentStatus();
+                if ($resolvedStatus === 'Denied') {
+                    $allowLateAfterClose = (bool) (int) setting('attendance_allow_late_after_close', 1);
+                    if (!$allowLateAfterClose) {
+                        echo json_encode([
+                            'success'      => false,
+                            'person_type'  => 'staff',
+                            'action'       => 'denied',
+                            'badge_status' => 'danger',
+                            'title'        => 'Scan Denied (Window Closed)',
+                            'message'      => "Attendance window is closed for today ({$nowTime}). Entry denied.",
+                            'time'         => date('g:i A', strtotime($nowTime)),
+                            'staff'        => $staffInfo,
+                            'student'      => [
+                                'id' => $staffId,
+                                'name' => $staffName,
+                                'admission_number' => $staffMember['staff_id'],
+                                'class_name' => $roleTitle,
+                                'photo' => $staffInfo['photo']
+                            ]
+                        ]);
+                        exit;
+                    }
+                    $resolvedStatus = 'Late';
+                }
+
+                $this->db->prepare(
+                    "INSERT INTO staff_attendance (staff_id, school_id, date, time_in, status, scan_method, marked_by, created_at)
+                     VALUES (?, 1, ?, ?, ?, 'qr_usb', ?, NOW())"
+                )->execute([$staffId, $today, $nowTime, $resolvedStatus, $adminId ?: null]);
+
+                echo json_encode([
+                    'success'      => true,
+                    'person_type'  => 'staff',
+                    'action'       => 'check_in',
+                    'badge_status' => 'success',
+                    'title'        => 'STAFF ARRIVAL RECORDED',
+                    'message'      => "Welcome, {$staffName}! Arrival logged at " . date('g:i A', strtotime($nowTime)) . " ({$resolvedStatus}).",
+                    'status'       => $resolvedStatus,
+                    'time'         => date('g:i A', strtotime($nowTime)),
+                    'staff'        => $staffInfo,
+                    'student'      => [
+                        'id' => $staffId,
+                        'name' => $staffName,
+                        'admission_number' => $staffMember['staff_id'],
+                        'class_name' => $roleTitle,
+                        'photo' => $staffInfo['photo']
+                    ]
+                ]);
+                exit;
+            }
+
+            // CASE 2: Record exists, time_out IS NULL -> Debounce or Check-out
+            if (empty($existingStaff['time_out'])) {
+                $timeInSeconds = strtotime($today . ' ' . $existingStaff['time_in']);
+                $diffMinutes = (int) round((time() - $timeInSeconds) / 60);
+
+                if ($diffMinutes < $debounceMins) {
+                    echo json_encode([
+                        'success'      => false,
+                        'person_type'  => 'staff',
+                        'action'       => 'duplicate_in',
+                        'badge_status' => 'warning',
+                        'title'        => 'STAFF ALREADY CHECKED IN',
+                        'message'      => "{$staffName} already checked in at " . date('g:i A', $timeInSeconds) . " ({$diffMinutes} min ago). Duplicate scan ignored.",
+                        'status'       => $existingStaff['status'],
+                        'time'         => date('g:i A', $timeInSeconds),
+                        'staff'        => $staffInfo,
+                        'student'      => [
+                            'id' => $staffId,
+                            'name' => $staffName,
+                            'admission_number' => $staffMember['staff_id'],
+                            'class_name' => $roleTitle,
+                            'photo' => $staffInfo['photo']
+                        ]
+                    ]);
+                    exit;
+                }
+
+                $this->db->prepare(
+                    "UPDATE staff_attendance SET time_out = ?, scan_method = 'qr_usb' WHERE id = ?"
+                )->execute([$nowTime, $existingStaff['id']]);
+
+                echo json_encode([
+                    'success'      => true,
+                    'person_type'  => 'staff',
+                    'action'       => 'check_out',
+                    'badge_status' => 'primary',
+                    'title'        => 'STAFF CHECK-OUT RECORDED',
+                    'message'      => "Goodbye, {$staffName}! Departure logged at " . date('g:i A', strtotime($nowTime)) . ".",
+                    'status'       => 'Checked Out',
+                    'time'         => date('g:i A', strtotime($nowTime)),
+                    'staff'        => $staffInfo,
+                    'student'      => [
+                        'id' => $staffId,
+                        'name' => $staffName,
+                        'admission_number' => $staffMember['staff_id'],
+                        'class_name' => $roleTitle,
+                        'photo' => $staffInfo['photo']
+                    ]
+                ]);
+                exit;
+            }
+
+            // CASE 3: Already checked out
+            $timeOutSeconds = strtotime($today . ' ' . $existingStaff['time_out']);
+            echo json_encode([
+                'success'      => false,
+                'person_type'  => 'staff',
+                'action'       => 'duplicate_out',
+                'badge_status' => 'warning',
+                'title'        => 'STAFF ALREADY CHECKED OUT',
+                'message'      => "{$staffName} already checked out today at " . date('g:i A', $timeOutSeconds) . ".",
+                'status'       => 'Checked Out',
+                'time'         => date('g:i A', $timeOutSeconds),
+                'staff'        => $staffInfo,
+                'student'      => [
+                    'id' => $staffId,
+                    'name' => $staffName,
+                    'admission_number' => $staffMember['staff_id'],
+                    'class_name' => $roleTitle,
+                    'photo' => $staffInfo['photo']
+                ]
+            ]);
+            exit;
+        }
+
+        // ── STEP 2: Locate student by qr_data, normalized qr_data, admission number, or application number ──
         $stmt = $this->db->prepare(
             "SELECT a.*, c.name AS class_name
              FROM applicants a
@@ -372,8 +616,8 @@ final class AttendanceController
                 'success'      => false,
                 'action'       => 'not_found',
                 'badge_status' => 'danger',
-                'title'        => 'Student Not Found',
-                'message'      => 'Unrecognized QR code or token. Not registered in system.',
+                'title'        => 'Record Not Found',
+                'message'      => 'Unrecognized QR code or token. Not registered as student or staff.',
                 'raw_code'     => $rawCode
             ]);
             exit;
@@ -387,7 +631,7 @@ final class AttendanceController
                 'action'       => 'cross_school_denied',
                 'badge_status' => 'danger',
                 'title'        => 'Cross-School Access Denied',
-                'message'      => 'This QR code belongs to a student from another school.'
+                'message'      => 'This QR code belongs to a member from another school.'
             ]);
             exit;
         }
@@ -610,22 +854,38 @@ final class AttendanceController
         ];
         $stats['on_campus'] = max(0, ((int)$stats['checked_in']) - ((int)$stats['checked_out']));
 
-        $recentStmt = $this->db->prepare(
+        // Student scans
+        $studentScans = $this->db->prepare(
             "SELECT att.id as attendance_id, att.applicant_id, att.time_in, att.time_out, att.status, att.scan_method,
                     s.first_name, s.last_name, s.admission_number, s.application_number, s.passport_photo,
-                    c.name as class_name
+                    c.name as class_name, 'student' as person_type
              FROM attendance att
              JOIN applicants s ON s.id = att.applicant_id
              LEFT JOIN classes c ON c.id = s.class_id
-             WHERE att.date = ?
-             ORDER BY GREATEST(
-                 COALESCE(att.time_out, '00:00:00'),
-                 COALESCE(att.time_in, '00:00:00')
-             ) DESC, att.id DESC
-             LIMIT 10"
+             WHERE att.date = ?"
         );
-        $recentStmt->execute([$today]);
-        $recentScans = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+        $studentScans->execute([$today]);
+        $allStudentScans = $studentScans->fetchAll(PDO::FETCH_ASSOC);
+
+        // Staff scans
+        $staffScans = $this->db->prepare(
+            "SELECT sa.id as attendance_id, sa.staff_id as applicant_id, sa.time_in, sa.time_out, sa.status, sa.scan_method,
+                    s.first_name, s.last_name, s.staff_id as admission_number, s.staff_id as application_number, s.passport_photo,
+                    COALESCE(s.department, 'Faculty') as class_name, 'staff' as person_type
+             FROM staff_attendance sa
+             JOIN staff s ON s.id = sa.staff_id
+             WHERE sa.date = ?"
+        );
+        $staffScans->execute([$today]);
+        $allStaffScans = $staffScans->fetchAll(PDO::FETCH_ASSOC);
+
+        $merged = array_merge($allStudentScans, $allStaffScans);
+        usort($merged, function ($a, $b) {
+            $tA = max($a['time_out'] ?? '00:00:00', $a['time_in'] ?? '00:00:00');
+            $tB = max($b['time_out'] ?? '00:00:00', $b['time_in'] ?? '00:00:00');
+            return strcmp($tB, $tA);
+        });
+        $recentScans = array_slice($merged, 0, 10);
 
         foreach ($recentScans as &$r) {
             $r['name'] = trim($r['first_name'] . ' ' . $r['last_name']);

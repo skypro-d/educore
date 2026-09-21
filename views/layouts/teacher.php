@@ -186,6 +186,9 @@ $currentRoute   = preg_replace('#^teacher/?#', '', $currentRoute);
         <?php endif; ?>
 
         <div class="nav-label">Account</div>
+        <a class="<?= $currentRoute === 'my-attendance' ? 'active' : '' ?>" href="<?= url('teacher/my-attendance') ?>">
+            <i class="ti ti-clock-check"></i> My Attendance
+        </a>
         <a class="<?= $currentRoute === 'profile' ? 'active' : '' ?>" href="<?= url('teacher/profile') ?>">
             <i class="ti ti-user-cog"></i> My Profile
         </a>

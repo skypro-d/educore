@@ -106,6 +106,10 @@ if (preg_match('#^staff/(\d+)/activity$#', $route, $m)) {
     $controller->staffActivity((int) $m[1]);
     exit;
 }
+if (preg_match('#^staff/(\d+)/id-card$#', $route, $m)) {
+    $controller->staffIdCard((int) $m[1]);
+    exit;
+}
 if (preg_match('#^staff/(\d+)/students$#', $route, $m)) {
     $controller->staffStudents((int) $m[1]);
     exit;
@@ -261,6 +265,16 @@ switch ($route) {
         break;
     case 'attendance-report':
         $attendance->report();
+        break;
+    case 'staff-attendance':
+        $controller->staffAttendance();
+        break;
+    case 'staff-attendance/save':
+        require_post();
+        $controller->saveStaffAttendance();
+        break;
+    case 'staff-attendance-report':
+        $controller->staffAttendanceReport();
         break;
     case 'attendance-settings':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $controller->saveAttendanceSettings() : $controller->attendanceSettings();

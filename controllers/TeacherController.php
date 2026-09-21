@@ -1576,6 +1576,50 @@ final class TeacherController
         redirect('teacher/profile');
     }
 
+    public function myAttendance(): void
+    {
+        $staff = StaffAuth::user();
+        $staffId = (int)$staff['id'];
+
+        $selectedMonth = isset($_GET['month']) ? (int)$_GET['month'] : (int)date('n');
+        $selectedYear  = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
+        if ($selectedMonth < 1 || $selectedMonth > 12) $selectedMonth = (int)date('n');
+        if ($selectedYear < 2000 || $selectedYear > 2100) $selectedYear = (int)date('Y');
+
+        $monthStr = sprintf('%04d-%02d', $selectedYear, $selectedMonth);
+
+        $stmt = $this->db->prepare(
+            "SELECT sa.*
+             FROM staff_attendance sa
+             WHERE sa.staff_id = ? AND sa.date LIKE ?
+             ORDER BY sa.date DESC"
+        );
+        $stmt->execute([$staffId, $monthStr . '-%']);
+        $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $presentCount = 0;
+        $lateCount = 0;
+        $absentCount = 0;
+
+        foreach ($logs as $l) {
+            if ($l['status'] === 'Present') $presentCount++;
+            elseif ($l['status'] === 'Late') $lateCount++;
+            elseif ($l['status'] === 'Absent') $absentCount++;
+        }
+
+        $totalMarked = $presentCount + $lateCount + $absentCount;
+        $punctuality = $totalMarked > 0 ? round((($presentCount) / $totalMarked) * 100, 1) : 100;
+
+        $stats = [
+            'present'     => $presentCount,
+            'late'        => $lateCount,
+            'absent'      => $absentCount,
+            'punctuality' => $punctuality
+        ];
+
+        render('teacher/my_attendance', compact('staff', 'logs', 'selectedMonth', 'selectedYear', 'stats'), 'teacher');
+    }
+
     /* ─── 12. Helper Methods ─────────────────────────────────────────────── */
 
     private function notifyParentOfAttendance(int $studentId, string $status, string $date): void

@@ -179,6 +179,9 @@ switch ($route) {
     case 'announcements':
         $controller->announcements();
         break;
+    case 'my-attendance':
+        $controller->myAttendance();
+        break;
     default:
         http_response_code(404);
         render('public/404');

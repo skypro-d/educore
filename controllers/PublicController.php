@@ -411,7 +411,87 @@ final class PublicController
             exit;
         }
 
-        // Find student by qr_data token. Explicitly include a.school_id to bypass TenantPDO auto-scoping.
+        // 1. Check if token belongs to a Staff member
+        $stmtStaff = $this->db->prepare(
+            "SELECT s.*, r.name AS role_title
+             FROM staff s
+             LEFT JOIN roles r ON r.id = s.role_id
+             WHERE (s.qr_data = ? OR s.staff_id = ?)
+             LIMIT 1"
+        );
+        $stmtStaff->execute([$token, $token]);
+        $staffMember = $stmtStaff->fetch();
+
+        if (!$staffMember && str_starts_with($token, 'ATTENDANCE-STF-')) {
+            $parts = explode('-', $token);
+            $staffId = isset($parts[2]) ? (int)$parts[2] : 0;
+            if ($staffId > 0) {
+                $stmtStaffLegacy = $this->db->prepare(
+                    "SELECT s.*, r.name AS role_title FROM staff s LEFT JOIN roles r ON r.id = s.role_id WHERE s.id = ? LIMIT 1"
+                );
+                $stmtStaffLegacy->execute([$staffId]);
+                $staffMember = $stmtStaffLegacy->fetch();
+            }
+        }
+
+        if ($staffMember) {
+            $today = date('Y-m-d');
+            $nowTime = date('H:i');
+            $staffId = (int)$staffMember['id'];
+
+            if ($staffMember['status'] !== 'Active') {
+                $student = [
+                    'scan_status' => 'error',
+                    'first_name' => $staffMember['first_name'],
+                    'last_name' => $staffMember['last_name'],
+                    'error_message' => 'Staff account is currently inactive.'
+                ];
+                require __DIR__ . '/../views/public/attendance_scan.php';
+                exit;
+            }
+
+            // Check if already checked in today
+            $checkStaffAtt = $this->db->prepare(
+                "SELECT id, status, time_in, time_out FROM staff_attendance WHERE staff_id = ? AND date = ? LIMIT 1"
+            );
+            $checkStaffAtt->execute([$staffId, $today]);
+            $existingStaffAtt = $checkStaffAtt->fetch();
+
+            if ($existingStaffAtt) {
+                $staffMember['is_staff'] = true;
+                $staffMember['scan_status'] = 'already';
+                $staffMember['status'] = $existingStaffAtt['status'];
+                $staffMember['time_in'] = $existingStaffAtt['time_in'];
+                $student = $staffMember;
+            } else {
+                $resolvedStatus = AttendanceRules::resolveCurrentStatus();
+                if ($resolvedStatus === 'Denied') {
+                    $staffMember['is_staff'] = true;
+                    $staffMember['scan_status'] = 'denied';
+                    $staffMember['status'] = 'Denied';
+                    $staffMember['time_in'] = $nowTime;
+                    $student = $staffMember;
+                    require __DIR__ . '/../views/public/attendance_scan.php';
+                    exit;
+                }
+
+                $this->db->prepare(
+                    "INSERT INTO staff_attendance (staff_id, school_id, date, time_in, status, scan_method, created_at)
+                     VALUES (?, 1, ?, ?, ?, 'qr_web', NOW())"
+                )->execute([$staffId, $today, $nowTime, $resolvedStatus]);
+
+                $staffMember['is_staff'] = true;
+                $staffMember['scan_status'] = 'success';
+                $staffMember['status'] = $resolvedStatus;
+                $staffMember['time_in'] = $nowTime;
+                $student = $staffMember;
+            }
+
+            require __DIR__ . '/../views/public/attendance_scan.php';
+            exit;
+        }
+
+        // 2. Find student by qr_data token. Explicitly include a.school_id to bypass TenantPDO auto-scoping.
         $stmt = $this->db->prepare(
             "SELECT a.*, c.name AS class_name
              FROM applicants a
