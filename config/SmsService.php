@@ -102,13 +102,33 @@ final class SmsService
     public static function buildExitMessage(
         string $studentName,
         string $schoolName,
-        string $date,
-        string $time,
+        string|array $dateOrExitData,
+        string $time = '',
         string $exitType = 'normal',
         ?string $reason = null,
         ?string $pickupPerson = null,
         string $className = ''
     ): string {
+        if (is_array($dateOrExitData)) {
+            $exitData     = $dateOrExitData;
+            $date         = $exitData['exit_date'] ?? date('D, M j Y');
+            $time         = $exitData['exit_time'] ?? date('g:i A');
+            $exitType     = $exitData['exit_type'] ?? 'normal';
+            $reason       = $exitData['exit_reason'] ?? null;
+            $pickupPerson = $exitData['pickup_person_name'] ?? null;
+            $className    = $exitData['class_name'] ?? $className;
+        } else {
+            $date = $dateOrExitData;
+        }
+
+        // Format date and time if raw timestamps provided
+        if (strtotime($date) !== false && !str_contains($date, ',')) {
+            $date = date('D, M j Y', strtotime($date));
+        }
+        if (strtotime($time) !== false && !str_contains($time, 'M') && !str_contains($time, 'm')) {
+            $time = date('g:i A', strtotime($time));
+        }
+
         $isEarly = ($exitType === 'early');
         $templateKey = $isEarly ? 'exit_sms_template_early' : 'exit_sms_template_normal';
         

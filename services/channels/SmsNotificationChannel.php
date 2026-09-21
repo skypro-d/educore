@@ -113,7 +113,13 @@ final class SmsNotificationChannel implements NotificationChannelInterface
                 ];
             }
 
-            $message = SmsService::buildExitMessage($studentName, $schoolName, $exitData);
+            $dateStr      = $context['date_formatted'] ?? (!empty($exitData['exit_date']) ? date('D, M j Y', strtotime($exitData['exit_date'])) : date('D, M j Y'));
+            $timeFmt      = $context['time_formatted'] ?? (!empty($exitData['exit_time']) ? date('g:i A', strtotime($exitData['exit_time'])) : (!empty($context['time']) ? date('g:i A', strtotime($context['time'])) : date('g:i A')));
+            $reason       = $exitData['exit_reason'] ?? null;
+            $pickupPerson = $exitData['pickup_person_name'] ?? null;
+            $className    = $student['class_name'] ?? '';
+
+            $message = SmsService::buildExitMessage($studentName, $schoolName, $dateStr, $timeFmt, $exitType, $reason, $pickupPerson, $className);
             $res = SmsService::send($phone, $message, 'exit', null, $exitLogId > 0 ? $exitLogId : null);
 
             if ($exitLogId > 0) {
