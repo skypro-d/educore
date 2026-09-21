@@ -1549,7 +1549,14 @@ final class TeacherController
         // Photo Upload
         if (!empty($_FILES['photo']['name'])) {
             try {
-                $allowed = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png'];
+                $allowed = [
+                    'image/jpeg' => 'jpg',
+                    'image/pjpeg' => 'jpg',
+                    'image/jpg' => 'jpg',
+                    'image/png' => 'png',
+                    'image/x-png' => 'png',
+                    'image/webp' => 'webp'
+                ];
                 $photoPath = upload_file('photo', 'staff', $allowed);
                 if ($photoPath) {
                     $this->db->prepare("UPDATE staff SET passport_photo = ?, updated_at = NOW() WHERE id = ?")->execute([$photoPath, $staffId]);

@@ -64,16 +64,43 @@
         .student-topbar .page-title { font-size: 16px; font-weight: 600; color: #1a2535; }
         .student-content { padding: 28px; }
 
+        .student-sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(6, 26, 64, 0.65);
+            backdrop-filter: blur(4px);
+            z-index: 99;
+        }
+
         .student-mobile-bar {
             display: none; background: var(--student-sidebar);
             padding: 12px 16px; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 50;
         }
-        .student-menu-toggle { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; }
+        .student-menu-toggle {
+            background: rgba(255,255,255,.1);
+            border: 1px solid rgba(255,255,255,.2);
+            color: #fff;
+            border-radius: 8px;
+            width: 36px; height: 36px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; cursor: pointer;
+        }
 
         @media (max-width: 768px) {
-            .student-sidebar { transform: translateX(-100%); }
-            .student-sidebar.open { transform: translateX(0); }
-            .student-main { margin-left: 0; }
+            .student-shell { flex-direction: column; }
+            .student-sidebar {
+                transform: translateX(-100%);
+                z-index: 1000;
+                box-shadow: none;
+            }
+            .student-sidebar.open {
+                transform: translateX(0);
+                box-shadow: 8px 0 25px rgba(0,0,0,0.4);
+            }
+            .student-sidebar-overlay.open { display: block; }
+            .student-main { margin-left: 0; width: 100%; }
             .student-mobile-bar { display: flex; }
             .student-content { padding: 16px; }
         }
@@ -82,6 +109,8 @@
 <body>
 <?php $studentSession = $_SESSION['student'] ?? null; ?>
 <?php $currentRoute  = trim($_GET['route'] ?? 'dashboard', '/'); ?>
+
+<div class="student-sidebar-overlay" id="studentSidebarOverlay"></div>
 
 <div class="student-shell">
 <?php if ($studentSession): ?>
@@ -94,10 +123,11 @@
         <?php else: ?>
             <div class="logo-icon"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></div>
         <?php endif; ?>
-        <div>
-            <div class="school-name"><?= e(setting('school_name', 'School')) ?></div>
+        <div style="min-width:0; flex:1;">
+            <div class="school-name text-truncate"><?= e(setting('school_name', 'School')) ?></div>
             <div class="portal-label">Student Portal</div>
         </div>
+        <button type="button" class="btn-close btn-close-white d-md-none ms-auto" id="studentSidebarClose" aria-label="Close menu" style="font-size:11px;"></button>
     </div>
     <nav class="student-nav">
         <div class="nav-label">General</div>
@@ -124,7 +154,7 @@
 <div class="student-main">
     <?php if ($studentSession): ?>
     <div class="student-mobile-bar">
-        <button class="student-menu-toggle" id="studentMenuToggle" type="button"><i class="ti ti-menu-2"></i></button>
+        <button class="student-menu-toggle" id="studentMenuToggle" type="button" aria-label="Toggle Navigation"><i class="ti ti-menu-2"></i></button>
         <span style="color:#fff;font-weight:600;font-size:14px"><?= e(setting('school_name', 'Student Portal')) ?></span>
         <a href="<?= url('student/logout') ?>" style="color:rgba(255,255,255,.7);font-size:13px">Logout</a>
     </div>
@@ -146,8 +176,33 @@
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-document.getElementById('studentMenuToggle')?.addEventListener('click', () => {
-    document.getElementById('studentSidebar')?.classList.toggle('open');
+document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('studentMenuToggle');
+    const sidebar = document.getElementById('studentSidebar');
+    const overlay = document.getElementById('studentSidebarOverlay');
+    const closeBtn = document.getElementById('studentSidebarClose');
+
+    function openSidebar() {
+        sidebar?.classList.add('open');
+        overlay?.classList.add('open');
+    }
+    function closeSidebar() {
+        sidebar?.classList.remove('open');
+        overlay?.classList.remove('open');
+    }
+
+    if (toggle) {
+        toggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (sidebar?.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+    }
+    if (overlay) overlay.addEventListener('click', closeSidebar);
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
 });
 </script>
 </body>

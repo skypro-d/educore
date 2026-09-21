@@ -261,13 +261,74 @@
         .badge-suspended { background-color: rgba(239, 68, 68, 0.15); color: var(--hub-danger); }
         .badge-trial { background-color: rgba(148, 163, 184, 0.15); color: var(--hub-muted); }
         .badge-enterprise { background-color: rgba(245, 158, 11, 0.15); color: var(--hub-gold); }
+
+        /* Responsive */
+        .hub-sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(4px);
+            z-index: 99;
+        }
+        .hub-mobile-bar {
+            display: none;
+            background: var(--hub-sidebar);
+            border-bottom: 1px solid var(--hub-border);
+            padding: 12px 18px;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 90;
+        }
+        .hub-menu-toggle {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: var(--hub-text);
+            border-radius: 8px;
+            width: 38px; height: 38px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; cursor: pointer;
+        }
+
+        @media (max-width: 992px) {
+            body {
+                flex-direction: column;
+            }
+            .hub-sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: none;
+                width: 280px;
+                z-index: 1000;
+            }
+            .hub-sidebar.open {
+                transform: translateX(0);
+                box-shadow: 10px 0 35px rgba(0, 0, 0, 0.7);
+            }
+            .hub-sidebar-overlay.open {
+                display: block;
+            }
+            .hub-mobile-bar {
+                display: flex;
+            }
+            .hub-main {
+                margin-left: 0;
+                padding: 20px 16px;
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
 
-<aside class="hub-sidebar">
+<div class="hub-sidebar-overlay" id="hubSidebarOverlay"></div>
+
+<aside class="hub-sidebar" id="hubSidebar">
     <div class="hub-logo">
         <i class="ti ti-server-cog"></i> SST Hub <span>SaaS</span>
+        <button type="button" class="btn-close btn-close-white d-lg-none ms-auto" id="hubSidebarClose" aria-label="Close menu" style="font-size:11px;"></button>
     </div>
     <div class="hub-nav">
         <?php $current = trim($_GET['route'] ?? 'dashboard', '/'); ?>
@@ -349,6 +410,18 @@
     </div>
 </aside>
 
+<div class="hub-mobile-bar d-lg-none">
+    <div class="d-flex align-items-center gap-2">
+        <button class="hub-menu-toggle" id="hubMenuToggleBtn" aria-label="Toggle Hub Menu">
+            <i class="ti ti-menu-2"></i>
+        </button>
+        <div class="hub-logo p-0 border-0 bg-transparent" style="font-size:16px;">
+            <i class="ti ti-server-cog"></i> SST Hub
+        </div>
+    </div>
+    <span class="hub-badge badge-active" style="font-size:10px;">SuperAdmin</span>
+</div>
+
 <main class="hub-main">
     <?php foreach (flashes() as $flash): ?>
         <div class="alert alert-<?= e($flash['type']) ?> alert-dismissible fade show" role="alert" style="background-color: var(--hub-card); border-color: var(--hub-border); color: var(--hub-text);">
@@ -357,9 +430,32 @@
         </div>
     <?php endforeach; ?>
 
-    <?= $content ?>
+    <div class="table-responsive">
+        <?= $content ?>
+    </div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtn = document.getElementById('hubMenuToggleBtn');
+    const sidebar = document.getElementById('hubSidebar');
+    const overlay = document.getElementById('hubSidebarOverlay');
+    const closeBtn = document.getElementById('hubSidebarClose');
+
+    function openSidebar() {
+        sidebar?.classList.add('open');
+        overlay?.classList.add('open');
+    }
+    function closeSidebar() {
+        sidebar?.classList.remove('open');
+        overlay?.classList.remove('open');
+    }
+
+    if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+    if (overlay) overlay.addEventListener('click', closeSidebar);
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+});
+</script>
 </body>
 </html>

@@ -139,7 +139,7 @@ function generate_application_number(PDO $db): string
     return $candidate;
 }
 
-function upload_file(string $field, string $folder, array $allowed): ?string
+function upload_file(string $field, string $folder, array $allowed = []): ?string
 {
     if (empty($_FILES[$field]['name'])) {
         return null;
@@ -147,39 +147,153 @@ function upload_file(string $field, string $folder, array $allowed): ?string
 
     $file = $_FILES[$field];
     if ($file['error'] !== UPLOAD_ERR_OK || $file['size'] > MAX_UPLOAD_SIZE) {
-        throw new RuntimeException('Upload failed or file is larger than 2MB.');
+        $err = $file['error'] ?? UPLOAD_ERR_OK;
+        if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE || $file['size'] > MAX_UPLOAD_SIZE) {
+            throw new RuntimeException('Upload failed: File is larger than allowed limit (2MB).');
+        }
+        throw new RuntimeException('Upload failed with error code: ' . $err);
+    }
+
+    // Default image types if none provided
+    if (empty($allowed)) {
+        $allowed = [
+            'image/jpeg' => 'jpg',
+            'image/pjpeg' => 'jpg',
+            'image/jpg'  => 'jpg',
+            'image/png'  => 'png',
+            'image/x-png'=> 'png',
+            'image/webp' => 'webp',
+            'image/gif'  => 'gif'
+        ];
+    }
+
+    $mimeToExtDefault = [
+        'image/jpeg' => 'jpg',
+        'image/jpg'  => 'jpg',
+        'image/pjpeg'=> 'jpg',
+        'image/png'  => 'png',
+        'image/x-png'=> 'png',
+        'image/webp' => 'webp',
+        'image/gif'  => 'gif',
+        'image/svg+xml' => 'svg',
+        'application/pdf' => 'pdf',
+        'application/msword' => 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'application/vnd.ms-excel' => 'xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+        'text/plain' => 'txt',
+        'text/csv'   => 'csv',
+        'application/zip' => 'zip',
+    ];
+
+    $extToMimeDefault = [
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'jfif' => 'image/jpeg',
+        'jpe'  => 'image/jpeg',
+        'png'  => 'image/png',
+        'webp' => 'image/webp',
+        'gif'  => 'image/gif',
+        'svg'  => 'image/svg+xml',
+        'pdf'  => 'application/pdf',
+        'doc'  => 'application/msword',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'docm' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls'  => 'application/vnd.ms-excel',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'txt'  => 'text/plain',
+        'csv'  => 'text/csv',
+        'zip'  => 'application/zip',
+    ];
+
+    $normalizedAllowed = [];
+    $allowedExts = [];
+
+    foreach ($allowed as $k => $v) {
+        if (is_numeric($k)) {
+            // Flat entry: e.g. 'jpg', 'png', or 'image/jpeg'
+            $val = strtolower(trim((string)$v));
+            if (str_contains($val, '/')) {
+                $ext = $mimeToExtDefault[$val] ?? 'bin';
+                $normalizedAllowed[$val] = $ext;
+                $allowedExts[] = $ext;
+            } else {
+                $ext = ltrim($val, '.');
+                $allowedExts[] = $ext;
+                if (isset($extToMimeDefault[$ext])) {
+                    $normalizedAllowed[$extToMimeDefault[$ext]] = $ext;
+                }
+            }
+        } elseif (str_contains((string)$k, '/')) {
+            // Mime => Ext format: ['image/jpeg' => 'jpg']
+            $mimeK = strtolower(trim((string)$k));
+            $extV  = strtolower(ltrim(trim((string)$v), '.'));
+            $normalizedAllowed[$mimeK] = $extV;
+            $allowedExts[] = $extV;
+            if ($extV === 'jpg' || $extV === 'jpeg') {
+                $normalizedAllowed['image/pjpeg'] = 'jpg';
+                $normalizedAllowed['image/jpg'] = 'jpg';
+                $allowedExts[] = 'jpg';
+                $allowedExts[] = 'jpeg';
+            }
+            if ($extV === 'png') {
+                $normalizedAllowed['image/x-png'] = 'png';
+            }
+        } else {
+            // Ext => Mime format: ['jpg' => 'image/jpeg', 'png' => 'image/png']
+            $extK  = strtolower(ltrim(trim((string)$k), '.'));
+            $mimeV = strtolower(trim((string)$v));
+            $normalizedAllowed[$mimeV] = $extK;
+            $allowedExts[] = $extK;
+            if ($extK === 'jpg' || $extK === 'jpeg') {
+                $normalizedAllowed['image/pjpeg'] = 'jpg';
+                $normalizedAllowed['image/jpg'] = 'jpg';
+                $allowedExts[] = 'jpg';
+                $allowedExts[] = 'jpeg';
+            }
+            if ($extK === 'png') {
+                $normalizedAllowed['image/x-png'] = 'png';
+            }
+        }
     }
 
     $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($file['tmp_name']);
-    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $detectedMime = strtolower((string)$finfo->file($file['tmp_name']));
+    $rawExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $extensionAliases = [
         'jpeg' => 'jpg',
         'jfif' => 'jpg',
-        'jpe' => 'jpg',
+        'jpe'  => 'jpg',
         'docm' => 'docx',
     ];
-    $normalizedExtension = $extensionAliases[$extension] ?? $extension;
+    $normalizedExtension = $extensionAliases[$rawExtension] ?? $rawExtension;
+    $allowedExtsList = array_unique(array_filter($allowedExts));
 
-    if (!array_key_exists($mime, $allowed)) {
+    $resolvedExt = null;
+    if (isset($normalizedAllowed[$detectedMime])) {
+        $resolvedExt = $normalizedAllowed[$detectedMime];
+    } else {
         $fallbackMimes = [
             'application/octet-stream',
             'application/zip',
             'application/x-zip-compressed',
             'binary/octet-stream',
         ];
-        $allowedExtensions = array_unique(array_values($allowed));
-        $isAllowedExtension = in_array($normalizedExtension, $allowedExtensions, true);
-        $isImageExtension = in_array($normalizedExtension, ['jpg', 'png', 'webp', 'gif'], true);
-        $isValidImage = !$isImageExtension || getimagesize($file['tmp_name']) !== false;
+        $isAllowedExt = in_array($normalizedExtension, $allowedExtsList, true) || in_array($rawExtension, $allowedExtsList, true);
+        $isImageExt = in_array($normalizedExtension, ['jpg', 'png', 'webp', 'gif'], true);
+        $isValidImg = !$isImageExt || (@getimagesize($file['tmp_name']) !== false);
 
-        if (!in_array($mime, $fallbackMimes, true) || !$isAllowedExtension || !$isValidImage) {
-            throw new RuntimeException('Invalid file type uploaded for ' . str_replace('_', ' ', $field) . '. Detected: ' . $mime . ' .' . $extension . '. Allowed files: ' . strtoupper(implode(', ', array_unique(array_values($allowed)))) . '.');
+        if ($isAllowedExt && $isValidImg && (in_array($detectedMime, $fallbackMimes, true) || str_starts_with($detectedMime, 'image/'))) {
+            $resolvedExt = $normalizedExtension;
         }
-        $allowed[$mime] = $normalizedExtension;
     }
 
-    $name = bin2hex(random_bytes(12)) . '.' . $allowed[$mime];
+    if (!$resolvedExt) {
+        $displayAllowed = !empty($allowedExtsList) ? strtoupper(implode(', ', $allowedExtsList)) : strtoupper(implode(', ', array_unique(array_values($normalizedAllowed))));
+        throw new RuntimeException('Invalid file type uploaded for ' . str_replace('_', ' ', $field) . '. Detected: ' . $detectedMime . ' (.' . $rawExtension . '). Allowed files: ' . $displayAllowed . '.');
+    }
+
+    $name = bin2hex(random_bytes(12)) . '.' . $resolvedExt;
     $targetDir = UPLOAD_PATH . trim($folder, '/') . '/';
     if (!is_dir($targetDir)) {
         mkdir($targetDir, 0755, true);

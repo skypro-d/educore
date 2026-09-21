@@ -76,11 +76,32 @@
         .teacher-topbar .topbar-meta { display: flex; align-items: center; gap: 14px; }
         .teacher-content { padding: 28px; flex: 1; }
 
+        .teacher-sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(4px);
+            z-index: 999;
+            transition: opacity 0.25s ease;
+        }
+
         .teacher-mobile-bar {
             display: none; background: var(--teacher-sidebar);
             padding: 12px 18px; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 500;
+            border-bottom: 1px solid rgba(255,255,255,.08);
         }
-        .teacher-menu-toggle { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; padding: 0; }
+        .teacher-menu-toggle {
+            background: rgba(255,255,255,.1);
+            border: 1px solid rgba(255,255,255,.15);
+            color: #fff;
+            border-radius: 8px;
+            width: 38px; height: 38px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; cursor: pointer;
+        }
+        .teacher-menu-toggle:hover { background: rgba(255,255,255,.2); color: #fff; }
 
         .t-card {
             background: #fff; border-radius: 14px; border: 1px solid #e2e8f0;
@@ -89,12 +110,23 @@
         }
 
         @media (max-width: 992px) {
-            .teacher-sidebar { transform: translateX(-100%); }
-            .teacher-sidebar.open { transform: translateX(0); }
-            .teacher-main { margin-left: 0; }
+            .teacher-shell { flex-direction: column; }
+            .teacher-sidebar {
+                transform: translateX(-100%);
+                z-index: 1000;
+                width: 270px;
+                box-shadow: none;
+            }
+            .teacher-sidebar.open {
+                transform: translateX(0);
+                box-shadow: 10px 0 35px rgba(0,0,0,0.5);
+            }
+            .teacher-sidebar-overlay.open { display: block; }
+            .teacher-main { margin-left: 0; width: 100%; }
             .teacher-mobile-bar { display: flex; }
             .teacher-topbar { display: none; }
-            .teacher-content { padding: 18px; }
+            .teacher-content { padding: 18px 14px; }
+            .t-card { padding: 16px; margin-bottom: 16px; }
         }
     </style>
 </head>
@@ -104,6 +136,8 @@ $teacherSession = $_SESSION['teacher'] ?? null;
 $currentRoute   = trim($_GET['route'] ?? 'dashboard', '/');
 $currentRoute   = preg_replace('#^teacher/?#', '', $currentRoute);
 ?>
+
+<div class="teacher-sidebar-overlay" id="teacherSidebarOverlay"></div>
 
 <div class="teacher-shell">
 <?php if ($teacherSession): ?>
@@ -124,10 +158,11 @@ $currentRoute   = preg_replace('#^teacher/?#', '', $currentRoute);
         <?php else: ?>
             <div class="logo-icon"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></div>
         <?php endif; ?>
-        <div style="min-width:0;">
+        <div style="min-width:0; flex:1;">
             <div class="school-name text-truncate"><?= e(setting('school_name', 'EduCore School')) ?></div>
             <div class="portal-label">Staff / Teacher Portal</div>
         </div>
+        <button type="button" class="btn-close btn-close-white d-lg-none ms-auto" id="teacherSidebarClose" aria-label="Close menu" style="font-size:11px;"></button>
     </div>
     <nav class="teacher-nav">
         <div class="nav-label">Main</div>
@@ -251,16 +286,30 @@ $currentRoute   = preg_replace('#^teacher/?#', '', $currentRoute);
 document.addEventListener('DOMContentLoaded', function() {
     const toggleBtn = document.getElementById('menuToggleBtn');
     const sidebar = document.getElementById('teacherSidebar');
-    if (toggleBtn && sidebar) {
-        toggleBtn.addEventListener('click', function() {
-            sidebar.classList.toggle('open');
-        });
-        document.addEventListener('click', function(e) {
-            if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && !toggleBtn.contains(e.target)) {
-                sidebar.classList.remove('open');
+    const overlay = document.getElementById('teacherSidebarOverlay');
+    const closeBtn = document.getElementById('teacherSidebarClose');
+
+    function openSidebar() {
+        sidebar?.classList.add('open');
+        overlay?.classList.add('open');
+    }
+    function closeSidebar() {
+        sidebar?.classList.remove('open');
+        overlay?.classList.remove('open');
+    }
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (sidebar?.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
             }
         });
     }
+    if (overlay) overlay.addEventListener('click', closeSidebar);
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
 });
 </script>
 </body>

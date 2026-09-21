@@ -65,16 +65,43 @@
         .parent-topbar .topbar-actions { display: flex; align-items: center; gap: 12px; }
         .parent-content { padding: 28px; }
 
+        .parent-sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(6, 26, 64, 0.65);
+            backdrop-filter: blur(4px);
+            z-index: 99;
+        }
+
         .parent-mobile-bar {
             display: none; background: var(--parent-sidebar);
             padding: 12px 16px; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 50;
         }
-        .parent-menu-toggle { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; }
+        .parent-menu-toggle {
+            background: rgba(255,255,255,.1);
+            border: 1px solid rgba(255,255,255,.2);
+            color: #fff;
+            border-radius: 8px;
+            width: 36px; height: 36px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; cursor: pointer;
+        }
 
         @media (max-width: 768px) {
-            .parent-sidebar { transform: translateX(-100%); }
-            .parent-sidebar.open { transform: translateX(0); }
-            .parent-main { margin-left: 0; }
+            .parent-shell { flex-direction: column; }
+            .parent-sidebar {
+                transform: translateX(-100%);
+                z-index: 1000;
+                box-shadow: none;
+            }
+            .parent-sidebar.open {
+                transform: translateX(0);
+                box-shadow: 8px 0 25px rgba(0,0,0,0.4);
+            }
+            .parent-sidebar-overlay.open { display: block; }
+            .parent-main { margin-left: 0; width: 100%; }
             .parent-mobile-bar { display: flex; }
             .parent-content { padding: 16px; }
         }
@@ -88,6 +115,8 @@ $allChildren   = $parentSession ? parent_linked_children() : [];
 $activeChildId = (int) ($parentSession['applicant_id'] ?? 0);
 ?>
 
+<div class="parent-sidebar-overlay" id="parentSidebarOverlay"></div>
+
 <div class="parent-shell">
 <?php if ($parentSession): ?>
 <aside class="parent-sidebar" id="parentSidebar">
@@ -99,10 +128,11 @@ $activeChildId = (int) ($parentSession['applicant_id'] ?? 0);
         <?php else: ?>
             <div class="logo-icon"><?= strtoupper(substr(setting('school_name', 'S'), 0, 1)) ?></div>
         <?php endif; ?>
-        <div>
-            <div class="school-name"><?= e(setting('school_name', 'School')) ?></div>
+        <div style="min-width:0; flex:1;">
+            <div class="school-name text-truncate"><?= e(setting('school_name', 'School')) ?></div>
             <div class="portal-label">Parent Portal</div>
         </div>
+        <button type="button" class="btn-close btn-close-white d-md-none ms-auto" id="parentSidebarClose" aria-label="Close menu" style="font-size:11px;"></button>
     </div>
 
     <?php if (count($allChildren) > 1): ?>
@@ -212,8 +242,33 @@ $activeChildId = (int) ($parentSession['applicant_id'] ?? 0);
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-document.getElementById('parentMenuToggle')?.addEventListener('click', () => {
-    document.getElementById('parentSidebar')?.classList.toggle('open');
+document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('parentMenuToggle');
+    const sidebar = document.getElementById('parentSidebar');
+    const overlay = document.getElementById('parentSidebarOverlay');
+    const closeBtn = document.getElementById('parentSidebarClose');
+
+    function openSidebar() {
+        sidebar?.classList.add('open');
+        overlay?.classList.add('open');
+    }
+    function closeSidebar() {
+        sidebar?.classList.remove('open');
+        overlay?.classList.remove('open');
+    }
+
+    if (toggle) {
+        toggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (sidebar?.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+    }
+    if (overlay) overlay.addEventListener('click', closeSidebar);
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
 });
 </script>
 </body>

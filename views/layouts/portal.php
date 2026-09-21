@@ -286,21 +286,95 @@
         .alert-info    { background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.3); color: #93c5fd; }
 
         /* ── Responsive ── */
-        @media (max-width: 900px) {
-            .cp-sidebar { width: 220px; }
-            .cp-main    { margin-left: 220px; padding: 24px; }
+        .cp-sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(4px);
+            z-index: 99;
+            transition: opacity 0.25s ease;
+        }
+
+        .cp-mobile-bar {
+            display: none;
+            background: var(--cp-sidebar);
+            border-bottom: 1px solid var(--cp-border);
+            padding: 12px 18px;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 90;
+        }
+        .cp-menu-toggle {
+            background: rgba(124,58,237,.15);
+            border: 1px solid rgba(124,58,237,.3);
+            color: var(--cp-text);
+            border-radius: 8px;
+            width: 38px; height: 38px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; cursor: pointer;
+        }
+        .cp-menu-toggle:hover {
+            background: rgba(124,58,237,.3);
+            color: #fff;
+        }
+
+        @media (max-width: 992px) {
+            body {
+                flex-direction: column;
+            }
+            .cp-sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: none;
+                width: 280px;
+                z-index: 1000;
+            }
+            .cp-sidebar.open {
+                transform: translateX(0);
+                box-shadow: 10px 0 35px rgba(0, 0, 0, 0.7);
+            }
+            .cp-sidebar-overlay.open {
+                display: block;
+            }
+            .cp-mobile-bar {
+                display: flex;
+            }
+            .cp-main {
+                margin-left: 0;
+                padding: 20px 16px;
+                width: 100%;
+            }
+            .cp-header {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+                margin-bottom: 20px;
+            }
+            .cp-card {
+                padding: 16px;
+                margin-bottom: 16px;
+            }
+            .cp-stat {
+                padding: 16px;
+            }
         }
     </style>
 </head>
 <body>
 
-<aside class="cp-sidebar">
+<div class="cp-sidebar-overlay" id="cpSidebarOverlay"></div>
+
+<aside class="cp-sidebar" id="cpSidebar">
     <div class="cp-logo">
         <div class="cp-logo-icon"><i class="ti ti-school"></i></div>
         <div class="cp-logo-text">
             <div class="cp-logo-title"><?= e(platform_setting('company_name', 'EduCore')) ?></div>
             <div class="cp-logo-sub">Customer Portal</div>
         </div>
+        <button type="button" class="btn-close btn-close-white d-lg-none ms-auto" id="cpSidebarClose" aria-label="Close menu" style="font-size:11px;"></button>
     </div>
 
     <?php
@@ -374,6 +448,19 @@
     </div>
 </aside>
 
+<div class="cp-mobile-bar d-lg-none">
+    <div class="d-flex align-items-center gap-2">
+        <button class="cp-menu-toggle" id="cpMenuToggleBtn" aria-label="Toggle Portal Menu">
+            <i class="ti ti-menu-2"></i>
+        </button>
+        <div class="d-flex align-items-center gap-2">
+            <div class="cp-logo-icon" style="width:30px;height:30px;font-size:15px;border-radius:7px;"><i class="ti ti-school"></i></div>
+            <span style="font-weight:700; font-size:14px; color:var(--cp-text);"><?= e(platform_setting('company_name', 'EduCore')) ?></span>
+        </div>
+    </div>
+    <span class="cp-badge badge-active" style="font-size:10px;">Portal</span>
+</div>
+
 <main class="cp-main">
     <?php foreach (flashes() as $flash): ?>
         <div class="alert alert-<?= e($flash['type']) ?> mb-3 d-flex align-items-center gap-2" role="alert">
@@ -382,7 +469,9 @@
         </div>
     <?php endforeach; ?>
 
-    <?= $content ?>
+    <div class="table-responsive">
+        <?= $content ?>
+    </div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -395,6 +484,26 @@ function copyToClipboard(text, btn) {
         setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
     });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtn = document.getElementById('cpMenuToggleBtn');
+    const sidebar = document.getElementById('cpSidebar');
+    const overlay = document.getElementById('cpSidebarOverlay');
+    const closeBtn = document.getElementById('cpSidebarClose');
+
+    function openSidebar() {
+        sidebar?.classList.add('open');
+        overlay?.classList.add('open');
+    }
+    function closeSidebar() {
+        sidebar?.classList.remove('open');
+        overlay?.classList.remove('open');
+    }
+
+    if (toggleBtn) toggleBtn.addEventListener('click', openSidebar);
+    if (overlay) overlay.addEventListener('click', closeSidebar);
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+});
 </script>
 </body>
 </html>
