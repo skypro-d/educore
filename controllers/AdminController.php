@@ -1443,8 +1443,9 @@ final class AdminController
             $feeStructureId = (int) ($_POST['fee_structure_id'] ?? 0);
             $amountPaid = (float) ($_POST['amount_paid'] ?? 0);
             $method = $_POST['payment_method'] ?? 'bank_transfer';
-            $date = $_POST['payment_date'] ?: date('Y-m-d H:i:s');
+            $date = !empty($_POST['payment_date']) ? $_POST['payment_date'] : date('Y-m-d H:i:s');
             $notes = trim($_POST['notes'] ?? '');
+            $returnTo = trim($_POST['return_to'] ?? '');
 
             // Get fee structure details to check total cost
             $stmt = $this->db->prepare("SELECT * FROM fee_structures WHERE id=?");
@@ -1452,9 +1453,19 @@ final class AdminController
             $fee = $stmt->fetch();
 
             if ($applicantId && $fee) {
-                $ref = 'MAN-' . strtoupper(bin2hex(random_bytes(5)));
-                $balance = max(0.00, (float) $fee['amount'] - $amountPaid);
+                // Calculate previous payments for this student & fee structure
+                $stmtTotal = $this->db->prepare(
+                    "SELECT COALESCE(SUM(amount_paid), 0) 
+                     FROM student_fee_payments 
+                     WHERE applicant_id = ? AND fee_structure_id = ? AND payment_status IN ('Paid','Partial','Manual')"
+                );
+                $stmtTotal->execute([$applicantId, $feeStructureId]);
+                $alreadyPaid = (float) $stmtTotal->fetchColumn();
+
+                $totalNowPaid = $alreadyPaid + $amountPaid;
+                $balance = max(0.00, (float) $fee['amount'] - $totalNowPaid);
                 $status = ($balance <= 0) ? 'Paid' : 'Partial';
+                $ref = 'MAN-' . strtoupper(bin2hex(random_bytes(5)));
                 $rcpt = generate_receipt_number($this->db);
 
                 $ins = $this->db->prepare(
@@ -1488,9 +1499,13 @@ final class AdminController
                     Logger::error('Failed to send fee payment receipt email: ' . $e->getMessage());
                 }
 
-                flash('success', 'Manual payment recorded successfully and receipt notification sent to parent.');
+                flash('success', 'Manual payment of ₦' . number_format($amountPaid, 2) . ' recorded successfully! Receipt #' . $rcpt . ' generated.');
             } else {
                 flash('danger', 'Invalid student or fee item.');
+            }
+
+            if (!empty($returnTo)) {
+                redirect($returnTo);
             }
             redirect('admin/student-fees');
         }

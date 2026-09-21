@@ -445,8 +445,36 @@ final class AttendanceController
             $chkStaff->execute([$staffId, $today]);
             $existingStaff = $chkStaff->fetch(PDO::FETCH_ASSOC);
 
-            // CASE 1: No record today -> Check-in arrival
+            // CASE 1: No record today
             if (!$existingStaff) {
+                // If scanning during afternoon / dismissal period, log as check-out departure
+                if (AttendanceRules::isDismissalTime()) {
+                    $this->db->prepare(
+                        "INSERT INTO staff_attendance (staff_id, school_id, date, time_in, time_out, status, scan_method, marked_by, created_at)
+                         VALUES (?, 1, ?, ?, ?, 'Present', 'qr_usb', ?, NOW())"
+                    )->execute([$staffId, $today, $nowTime, $nowTime, $adminId ?: null]);
+
+                    echo json_encode([
+                        'success'      => true,
+                        'person_type'  => 'staff',
+                        'action'       => 'check_out',
+                        'badge_status' => 'primary',
+                        'title'        => 'STAFF CHECK-OUT RECORDED',
+                        'message'      => "Goodbye, {$staffName}! Departure logged at " . date('g:i A', strtotime($nowTime)) . ".",
+                        'status'       => 'Checked Out',
+                        'time'         => date('g:i A', strtotime($nowTime)),
+                        'staff'        => $staffInfo,
+                        'student'      => [
+                            'id' => $staffId,
+                            'name' => $staffName,
+                            'admission_number' => $staffMember['staff_id'],
+                            'class_name' => $roleTitle,
+                            'photo' => $staffInfo['photo']
+                        ]
+                    ]);
+                    exit;
+                }
+
                 $resolvedStatus = AttendanceRules::resolveCurrentStatus();
                 if ($resolvedStatus === 'Denied') {
                     $allowLateAfterClose = (bool) (int) setting('attendance_allow_late_after_close', 1);
@@ -501,10 +529,10 @@ final class AttendanceController
 
             // CASE 2: Record exists, time_out IS NULL -> Debounce or Check-out
             if (empty($existingStaff['time_out'])) {
-                $timeInSeconds = strtotime($today . ' ' . $existingStaff['time_in']);
+                $timeInSeconds = !empty($existingStaff['time_in']) ? strtotime($today . ' ' . $existingStaff['time_in']) : (time() - 3600);
                 $diffMinutes = (int) round((time() - $timeInSeconds) / 60);
 
-                if ($diffMinutes < $debounceMins) {
+                if ($diffMinutes < $debounceMins && !AttendanceRules::isDismissalTime()) {
                     echo json_encode([
                         'success'      => false,
                         'person_type'  => 'staff',
@@ -687,8 +715,69 @@ final class AttendanceController
         $chkStmt->execute([$studentId, $today]);
         $existing = $chkStmt->fetch(PDO::FETCH_ASSOC);
 
-        // ── CASE 1: No attendance record today → Record CHECK-IN ──
+        // ── CASE 1: No attendance record today ──
         if (!$existing) {
+            // If scanning at or after dismissal time (or afternoon departure), record as dismissal check-out directly
+            if (AttendanceRules::isDismissalTime()) {
+                $this->db->beginTransaction();
+                try {
+                    $ins = $this->db->prepare(
+                        "INSERT INTO attendance (applicant_id, class_id, school_id, date, time_in, time_out, status, scan_method, alert_sent, timeout_alert_sent, marked_by, created_at)
+                         VALUES (?, ?, ?, ?, ?, ?, 'Present', 'qr_usb', 1, 0, ?, NOW())"
+                    );
+                    $ins->execute([$studentId, $classId, $schoolId, $today, $nowTime, $nowTime, $adminId ?: null]);
+                    $attendanceId = (int) $this->db->lastInsertId();
+
+                    // Insert exit log
+                    $isEarly = (date('H:i') < AttendanceRules::getDismissalTime());
+                    $exitType = $isEarly ? 'early' : 'normal';
+                    $exitReason = $isEarly ? 'Early Departure' : 'Normal Dismissal';
+                    $insExit = $this->db->prepare(
+                        "INSERT INTO student_exit_logs
+                            (school_id, student_id, attendance_id, exit_type, exit_reason, exit_date, exit_time, exited_at, scanned_by, scan_method, qr_token, verification_status, sms_status, created_at)
+                         VALUES
+                            (?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'qr_usb', ?, 'verified', 'pending', NOW())"
+                    );
+                    $insExit->execute([$schoolId, $studentId, $attendanceId, $exitType, $exitReason, $today, $nowTime, $adminId ?: null, $token]);
+                    $this->db->commit();
+                } catch (Throwable $e) {
+                    $this->db->rollBack();
+                    echo json_encode([
+                        'success'      => false,
+                        'action'       => 'error',
+                        'badge_status' => 'danger',
+                        'title'        => 'Database Error',
+                        'message'      => 'Failed to save checkout: ' . $e->getMessage()
+                    ]);
+                    exit;
+                }
+
+                // Dispatch Check-out Notification asynchronously
+                if ((int) setting('attendance_checkout_sms_enabled', 1) || (int) setting('attendance_checkout_email_enabled', 1)) {
+                    $exitData = [
+                        'exit_date'          => $today,
+                        'exit_time'          => $nowTime,
+                        'exit_type'          => 'normal',
+                        'exit_reason'        => 'School Dismissal',
+                        'pickup_person_name' => 'Self / Guardian'
+                    ];
+                    AttendanceService::dispatchCheckoutNotification($student, $exitData, $attendanceId);
+                }
+
+                echo json_encode([
+                    'success'      => true,
+                    'action'       => 'check_out',
+                    'badge_status' => 'primary',
+                    'title'        => 'CHECK-OUT RECORDED',
+                    'message'      => "Goodbye, {$studentName}! Dismissal departure logged at " . date('g:i A', strtotime($nowTime)) . ".",
+                    'status'       => 'Checked Out',
+                    'time'         => date('g:i A', strtotime($nowTime)),
+                    'student'      => $studentInfo
+                ]);
+                exit;
+            }
+
+            // Morning Check-in Window
             $resolvedStatus = AttendanceRules::resolveCurrentStatus();
             $isDenied = ($resolvedStatus === 'Denied');
 
@@ -748,12 +837,12 @@ final class AttendanceController
 
         // ── CASE 2: Record exists, but time_out IS NULL ──
         if (empty($existing['time_out'])) {
-            $timeInSeconds = strtotime($today . ' ' . $existing['time_in']);
+            $timeInSeconds = !empty($existing['time_in']) ? strtotime($today . ' ' . $existing['time_in']) : (time() - 3600);
             $nowSeconds    = time();
             $diffMinutes   = (int) round(($nowSeconds - $timeInSeconds) / 60);
 
-            // Subcase 2A: Within debounce window → Duplicate check-in attempt
-            if ($diffMinutes < $debounceMins) {
+            // Subcase 2A: Within debounce window AND not yet dismissal time → Duplicate check-in attempt
+            if ($diffMinutes < $debounceMins && !AttendanceRules::isDismissalTime()) {
                 echo json_encode([
                     'success'      => false,
                     'action'       => 'duplicate_in',
@@ -767,15 +856,37 @@ final class AttendanceController
                 exit;
             }
 
-            // Subcase 2B: Outside debounce window → Record CHECK-OUT
+            // Subcase 2B: Outside debounce window OR Dismissal time reached → Record CHECK-OUT
             $this->db->beginTransaction();
             try {
                 $upd = $this->db->prepare(
                     "UPDATE attendance
-                     SET time_out = ?, scan_method = 'qr_usb'
+                     SET time_out = ?,
+                         time_in = COALESCE(time_in, ?),
+                         status = CASE WHEN status = 'Absent' THEN 'Present' ELSE status END,
+                         scan_method = 'qr_usb'
                      WHERE id = ?"
                 );
-                $upd->execute([$nowTime, $existing['id']]);
+                $upd->execute([$nowTime, $nowTime, $existing['id']]);
+
+                // Create student exit log record if not yet logged today
+                $chkExit = $this->db->prepare("SELECT id FROM student_exit_logs WHERE student_id = ? AND exit_date = ? LIMIT 1");
+                $chkExit->execute([$studentId, $today]);
+                $existingExit = $chkExit->fetch();
+
+                if (!$existingExit) {
+                    $isEarly = (date('H:i') < AttendanceRules::getDismissalTime());
+                    $exitType = $isEarly ? 'early' : 'normal';
+                    $exitReason = $isEarly ? 'Early Departure' : 'Normal Dismissal';
+                    $insExit = $this->db->prepare(
+                        "INSERT INTO student_exit_logs
+                            (school_id, student_id, attendance_id, exit_type, exit_reason, exit_date, exit_time, exited_at, scanned_by, scan_method, qr_token, verification_status, sms_status, created_at)
+                         VALUES
+                            (?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'qr_usb', ?, 'verified', 'pending', NOW())"
+                    );
+                    $insExit->execute([$schoolId, $studentId, (int)$existing['id'], $exitType, $exitReason, $today, $nowTime, $adminId ?: null, $token]);
+                }
+
                 $this->db->commit();
             } catch (Throwable $e) {
                 $this->db->rollBack();

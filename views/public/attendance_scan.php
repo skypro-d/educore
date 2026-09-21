@@ -54,9 +54,10 @@ body {
     margin: 0 auto 1.5rem;
     font-size: 2.4rem;
 }
-.icon-wrap.success { background: rgba(34,197,94,.15); border: 2px solid rgba(34,197,94,.4); }
-.icon-wrap.already { background: rgba(251,191,36,.15); border: 2px solid rgba(251,191,36,.4); }
-.icon-wrap.error   { background: rgba(239,68,68,.15);  border: 2px solid rgba(239,68,68,.4); }
+.icon-wrap.success  { background: rgba(34,197,94,.15); border: 2px solid rgba(34,197,94,.4); }
+.icon-wrap.checkout { background: rgba(59,130,246,.15); border: 2px solid rgba(59,130,246,.4); }
+.icon-wrap.already  { background: rgba(251,191,36,.15); border: 2px solid rgba(251,191,36,.4); }
+.icon-wrap.error    { background: rgba(239,68,68,.15);  border: 2px solid rgba(239,68,68,.4); }
 .photo {
     width: 80px;
     height: 80px;
@@ -76,9 +77,10 @@ body {
     text-transform: uppercase;
     margin-bottom: 1.2rem;
 }
-.badge-success { background: rgba(34,197,94,.2); color: #4ade80; }
-.badge-already { background: rgba(251,191,36,.2); color: #fcd34d; }
-.badge-error   { background: rgba(239,68,68,.2);  color: #f87171; }
+.badge-success  { background: rgba(34,197,94,.2); color: #4ade80; }
+.badge-checkout { background: rgba(59,130,246,.2); color: #60a5fa; }
+.badge-already  { background: rgba(251,191,36,.2); color: #fcd34d; }
+.badge-error    { background: rgba(239,68,68,.2);  color: #f87171; }
 .student-name {
     font-size: 1.45rem;
     font-weight: 900;
@@ -134,6 +136,54 @@ body {
     </div>
     <p class="message-text">Welcome! Your attendance has been successfully logged for today.</p>
 
+<?php elseif ($status === 'checkout'): ?>
+
+    <?php if ($photo): ?>
+        <img class="photo" src="<?= $photo ?>" alt="<?= $name ?>">
+    <?php else: ?>
+        <div class="icon-wrap checkout">🚪</div>
+    <?php endif; ?>
+    <span class="status-badge badge-checkout">✓ <?= $isStaff ? 'Staff Departure Logged' : 'Departure (Check-Out) Recorded' ?></span>
+    <div class="student-name"><?= $name ?></div>
+    <div class="student-meta">
+        <?php if ($isStaff): ?>
+            Staff ID: <strong style="color:rgba(255,255,255,.85)"><?= $staffId ?></strong><br>
+            Designation: <strong style="color:rgba(255,255,255,.85)"><?= $roleTitle ?> (<?= $department ?>)</strong>
+        <?php else: ?>
+            Admission No: <strong style="color:rgba(255,255,255,.85)"><?= $admNo ?></strong><br>
+            Class: <strong style="color:rgba(255,255,255,.85)"><?= $class ?></strong>
+        <?php endif; ?>
+    </div>
+    <div class="time-block">
+        <div class="time-label">Departure Time (Time Out)</div>
+        <div class="time-value"><?= date('h:i A') ?></div>
+        <div class="date-value"><?= date('l, d F Y') ?></div>
+    </div>
+    <p class="message-text">Goodbye! Your departure has been successfully logged for today.</p>
+
+<?php elseif ($status === 'already_out'): ?>
+
+    <?php if ($photo): ?>
+        <img class="photo" src="<?= $photo ?>" alt="<?= $name ?>">
+    <?php else: ?>
+        <div class="icon-wrap already">⚠</div>
+    <?php endif; ?>
+    <span class="status-badge badge-already">Already Checked Out</span>
+    <div class="student-name"><?= $name ?></div>
+    <div class="student-meta">
+        <?php if ($isStaff): ?>
+            Staff ID: <strong style="color:rgba(255,255,255,.85)"><?= $staffId ?></strong>
+        <?php else: ?>
+            Admission No: <strong style="color:rgba(255,255,255,.85)"><?= $admNo ?></strong>
+        <?php endif; ?>
+    </div>
+    <div class="time-block">
+        <div class="time-label">Departure Time Recorded</div>
+        <div class="time-value"><?= !empty($student['time_out']) ? date('h:i A', strtotime($student['time_out'])) : date('h:i A') ?></div>
+        <div class="date-value"><?= date('l, d F Y') ?></div>
+    </div>
+    <p class="message-text">Your departure was already recorded today. No further scan required.</p>
+
 <?php elseif ($status === 'already'): ?>
 
     <?php if ($photo): ?>
@@ -154,7 +204,7 @@ body {
     </div>
     <div class="time-block">
         <div class="time-label">Today's Check-In</div>
-        <div class="time-value"><?= date('h:i A') ?></div>
+        <div class="time-value"><?= !empty($student['time_in']) ? date('h:i A', strtotime($student['time_in'])) : date('h:i A') ?></div>
         <div class="date-value"><?= date('l, d F Y') ?></div>
     </div>
     <p class="message-text">Your arrival was already recorded today. No duplicate scan required.</p>

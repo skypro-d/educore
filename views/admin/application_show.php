@@ -331,9 +331,9 @@ $documents = [
                         <i class="ti ti-shield-check me-1"></i>Zero Balance
                     </span>
                 <?php endif; ?>
-                <a href="<?= url('admin/student-fees') ?>" class="btn btn-sm btn-primary rounded-3 px-3 shadow-sm" style="font-size: 12px;">
+                <button type="button" class="btn btn-sm btn-primary rounded-3 px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#collectFeeModal" style="font-size: 12px;">
                     <i class="ti ti-plus me-1"></i> Record Payment
-                </a>
+                </button>
             </div>
         </div>
 
@@ -397,9 +397,20 @@ $documents = [
                                 </td>
                                 <td class="text-end pe-3">
                                     <?php if ($status !== 'Paid'): ?>
-                                        <a href="<?= url('admin/student-fees') ?>" class="btn btn-xs btn-primary py-1 px-2 rounded-2 shadow-sm" style="font-size: 11px;">
+                                        <button type="button" 
+                                                class="btn btn-xs btn-primary py-1 px-2 rounded-2 shadow-sm btn-collect-fee" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#collectFeeModal"
+                                                data-fee-id="<?= (int)$fs['fee_structure_id'] ?>"
+                                                data-fee-name="<?= e($fs['fee_name']) ?>"
+                                                data-fee-amount="<?= (float)$fs['fee_amount'] ?>"
+                                                data-balance-due="<?= (float)$fs['balance_due'] ?>"
+                                                data-total-paid="<?= (float)$fs['total_paid'] ?>"
+                                                data-term="<?= e($fs['term']) ?>"
+                                                data-year="<?= e($fs['academic_year'] ?? '') ?>"
+                                                style="font-size: 11px;">
                                             <i class="ti ti-plus me-1"></i> Collect
-                                        </a>
+                                        </button>
                                     <?php else: ?>
                                         <span class="text-success small fw-semibold"><i class="ti ti-circle-check-filled me-1"></i>Completed</span>
                                     <?php endif; ?>
@@ -671,3 +682,195 @@ $documents = [
         </div>
     </div>
 </div>
+
+<!-- Modal: Collect Fee Payment Directly -->
+<div class="modal fade" id="collectFeeModal" tabindex="-1" aria-labelledby="collectFeeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="collectFeeModalLabel"><i class="ti ti-cash me-1"></i> Collect Fee Payment</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="<?= url('admin/student-fees') ?>">
+                <?= csrf_field() ?>
+                <input type="hidden" name="applicant_id" value="<?= (int)$application['id'] ?>">
+                <input type="hidden" name="return_to" value="admin/applications/<?= (int)$application['id'] ?>">
+                
+                <div class="modal-body p-4">
+                    <!-- Student Header Ribbon -->
+                    <div class="d-flex align-items-center bg-light p-3 rounded-3 mb-3 border">
+                        <div class="avatar-circle bg-primary-subtle text-primary fw-bold rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 44px; height: 44px; font-size: 16px;">
+                            <?= strtoupper(substr($application['first_name'] ?? 'S', 0, 1) . substr($application['last_name'] ?? '', 0, 1)) ?>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold text-dark fs-6"><?= e($fullName) ?></div>
+                            <div class="text-muted small">
+                                <span class="badge bg-secondary-subtle text-secondary me-1"><?= e($application['admission_number'] ?: $application['application_number']) ?></span>
+                                <span class="badge bg-light text-dark border"><?= e($application['class_name'] ?: 'Class') ?></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fee Item Selector -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Select Fee Item <span class="text-danger">*</span></label>
+                        <select name="fee_structure_id" id="collectFeeSelect" required class="form-select form-select-sm">
+                            <option value="">-- Choose Fee Item to Collect --</option>
+                            <?php if (!empty($feeSchedule)): ?>
+                                <?php foreach ($feeSchedule as $fsItem): ?>
+                                    <option value="<?= (int)$fsItem['fee_structure_id'] ?>"
+                                            data-fee-name="<?= e($fsItem['fee_name']) ?>"
+                                            data-fee-amount="<?= (float)$fsItem['fee_amount'] ?>"
+                                            data-balance-due="<?= (float)$fsItem['balance_due'] ?>"
+                                            data-total-paid="<?= (float)$fsItem['total_paid'] ?>"
+                                            data-term="<?= e($fsItem['term']) ?>"
+                                            data-year="<?= e($fsItem['academic_year'] ?? '') ?>"
+                                            data-status="<?= e($fsItem['payment_status']) ?>">
+                                        <?= e($fsItem['fee_name']) ?> (<?= e($fsItem['term']) ?> Term) — Balance: ₦<?= number_format((float)$fsItem['balance_due'], 2) ?> [<?= e($fsItem['payment_status']) ?>]
+                                    </option>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </select>
+                    </div>
+
+                    <!-- Fee Breakdown Cards -->
+                    <div class="card bg-light border-0 p-3 mb-3">
+                        <div class="row g-2 text-center">
+                            <div class="col-4">
+                                <div class="text-muted small" style="font-size: 11px;">Total Amount</div>
+                                <div class="fw-bold text-dark" id="modalFeeTotal">₦0.00</div>
+                            </div>
+                            <div class="col-4 border-start border-end">
+                                <div class="text-muted small" style="font-size: 11px;">Amount Paid</div>
+                                <div class="fw-bold text-success" id="modalFeePaid">₦0.00</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-muted small" style="font-size: 11px;">Balance Due</div>
+                                <div class="fw-bold text-danger" id="modalFeeBalance">₦0.00</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Amount Paying & Quick Buttons -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label small fw-bold mb-0">Amount Paying (NGN) <span class="text-danger">*</span></label>
+                            <div class="d-flex gap-1" id="quickAmountPills">
+                                <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size: 11px;" id="btnPayFull">Pay Full Balance</button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size: 11px;" id="btnPayHalf">50% Part</button>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text fw-bold">₦</span>
+                            <input type="number" name="amount_paid" id="collectAmountPaid" required min="0.01" step="any" class="form-control fw-bold" placeholder="0.00">
+                        </div>
+                        <div class="form-text small" id="collectAmountHelp">Enter payment amount to record for this student.</div>
+                    </div>
+
+                    <!-- Payment Method & Date -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-sm-6">
+                            <label class="form-label small fw-bold">Payment Channel / Method <span class="text-danger">*</span></label>
+                            <select name="payment_method" class="form-select form-select-sm" required>
+                                <option value="cash">Cash</option>
+                                <option value="bank_transfer" selected>Bank Transfer</option>
+                                <option value="pos">POS / Card</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label small fw-bold">Payment Date</label>
+                            <input type="datetime-local" name="payment_date" class="form-control form-control-sm" value="<?= date('Y-m-d\TH:i') ?>">
+                        </div>
+                    </div>
+
+                    <!-- Memo / Reference -->
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">Transaction Reference / Memo (Optional)</label>
+                        <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="Teller number, transfer reference, depositor name..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm px-3 fw-bold">
+                        <i class="ti ti-receipt me-1"></i> Record &amp; Generate Receipt
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const collectFeeSelect = document.getElementById('collectFeeSelect');
+    const collectAmountPaid = document.getElementById('collectAmountPaid');
+    const modalFeeTotal = document.getElementById('modalFeeTotal');
+    const modalFeePaid = document.getElementById('modalFeePaid');
+    const modalFeeBalance = document.getElementById('modalFeeBalance');
+    const btnPayFull = document.getElementById('btnPayFull');
+    const btnPayHalf = document.getElementById('btnPayHalf');
+
+    function updateFeeDetails() {
+        if (!collectFeeSelect) return;
+        const opt = collectFeeSelect.options[collectFeeSelect.selectedIndex];
+        if (!opt || !opt.value) {
+            if (modalFeeTotal) modalFeeTotal.textContent = '₦0.00';
+            if (modalFeePaid) modalFeePaid.textContent = '₦0.00';
+            if (modalFeeBalance) modalFeeBalance.textContent = '₦0.00';
+            return;
+        }
+        const total = parseFloat(opt.dataset.feeAmount || 0);
+        const paid = parseFloat(opt.dataset.totalPaid || 0);
+        const balance = parseFloat(opt.dataset.balanceDue || 0);
+
+        if (modalFeeTotal) modalFeeTotal.textContent = '₦' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (modalFeePaid) modalFeePaid.textContent = '₦' + paid.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (modalFeeBalance) modalFeeBalance.textContent = '₦' + balance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        if (balance > 0) {
+            if (collectAmountPaid) collectAmountPaid.value = balance.toFixed(2);
+        } else if (total > 0) {
+            if (collectAmountPaid) collectAmountPaid.value = total.toFixed(2);
+        }
+    }
+
+    if (collectFeeSelect) {
+        collectFeeSelect.addEventListener('change', updateFeeDetails);
+    }
+
+    if (btnPayFull) {
+        btnPayFull.addEventListener('click', function() {
+            if (!collectFeeSelect) return;
+            const opt = collectFeeSelect.options[collectFeeSelect.selectedIndex];
+            if (opt && opt.dataset.balanceDue !== undefined) {
+                const bal = parseFloat(opt.dataset.balanceDue);
+                const amt = bal > 0 ? bal : parseFloat(opt.dataset.feeAmount || 0);
+                if (collectAmountPaid) collectAmountPaid.value = amt.toFixed(2);
+            }
+        });
+    }
+
+    if (btnPayHalf) {
+        btnPayHalf.addEventListener('click', function() {
+            if (!collectFeeSelect) return;
+            const opt = collectFeeSelect.options[collectFeeSelect.selectedIndex];
+            if (opt && opt.dataset.balanceDue !== undefined) {
+                const bal = parseFloat(opt.dataset.balanceDue);
+                const amt = bal > 0 ? bal : parseFloat(opt.dataset.feeAmount || 0);
+                if (collectAmountPaid) collectAmountPaid.value = (amt / 2).toFixed(2);
+            }
+        });
+    }
+
+    document.querySelectorAll('.btn-collect-fee').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const feeId = this.dataset.feeId;
+            if (collectFeeSelect) {
+                collectFeeSelect.value = feeId;
+                updateFeeDetails();
+            }
+        });
+    });
+});
+</script>

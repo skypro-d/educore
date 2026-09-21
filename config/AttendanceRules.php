@@ -64,6 +64,33 @@ final class AttendanceRules
     }
 
     /**
+     * Is the current or specified time in the afternoon / dismissal period?
+     *
+     * @param string|null $time e.g. '14:35' (defaults to current time)
+     * @return bool
+     */
+    public static function isDismissalTime(?string $time = null): bool
+    {
+        $times = self::loadTimes();
+        $currTime = $time ?? date('H:i');
+        $currMins = self::toMinutes($currTime);
+        $closeMins = self::toMinutes($times['close']);
+        $dismissMins = self::toMinutes($times['school_close']);
+
+        // Dismissal time is reached if at/after dismissal setting, OR past midday (>= 12:00) and past attendance closing time
+        return ($currMins >= $dismissMins) || ($currMins >= 720 && $currMins >= $closeMins);
+    }
+
+    /**
+     * Get official school dismissal time string (e.g. '14:30').
+     */
+    public static function getDismissalTime(): string
+    {
+        $times = self::loadTimes();
+        return $times['school_close'] ?? '14:30';
+    }
+
+    /**
      * Is the current time still within the attendance window?
      * (i.e., before or at attendance_close_time)
      */
@@ -119,7 +146,7 @@ final class AttendanceRules
             'ontime_until' => $get('attendance_ontime_until', '07:30'),
             'late_from'    => $get('attendance_late_from',    '07:31'),
             'close'        => $get('attendance_close_time',   '09:00'),
-            'school_close' => $get('school_close_time',       '14:30'),
+            'school_close' => $get('exit_normal_time', $get('school_close_time', '14:30')),
         ];
 
         return self::$times;

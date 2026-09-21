@@ -438,6 +438,7 @@ final class PublicController
             $today = date('Y-m-d');
             $nowTime = date('H:i');
             $staffId = (int)$staffMember['id'];
+            $staffMember['is_staff'] = true;
 
             if ($staffMember['status'] !== 'Active') {
                 $student = [
@@ -458,33 +459,64 @@ final class PublicController
             $existingStaffAtt = $checkStaffAtt->fetch();
 
             if ($existingStaffAtt) {
-                $staffMember['is_staff'] = true;
-                $staffMember['scan_status'] = 'already';
-                $staffMember['status'] = $existingStaffAtt['status'];
-                $staffMember['time_in'] = $existingStaffAtt['time_in'];
+                if (empty($existingStaffAtt['time_out'])) {
+                    $timeInSeconds = !empty($existingStaffAtt['time_in']) ? strtotime($today . ' ' . $existingStaffAtt['time_in']) : (time() - 3600);
+                    $diffMinutes = (int) round((time() - $timeInSeconds) / 60);
+
+                    // If debounce window passed OR dismissal time, record checkout
+                    if ($diffMinutes >= 15 || AttendanceRules::isDismissalTime()) {
+                        $this->db->prepare(
+                            "UPDATE staff_attendance SET time_out = ?, scan_method = 'qr_web' WHERE id = ?"
+                        )->execute([date('H:i:s'), $existingStaffAtt['id']]);
+
+                        $staffMember['scan_status'] = 'checkout';
+                        $staffMember['status'] = 'Checked Out';
+                        $staffMember['time_out'] = $nowTime;
+                        $staffMember['time_in'] = $existingStaffAtt['time_in'];
+                    } else {
+                        $staffMember['scan_status'] = 'already';
+                        $staffMember['status'] = $existingStaffAtt['status'];
+                        $staffMember['time_in'] = $existingStaffAtt['time_in'];
+                    }
+                } else {
+                    $staffMember['scan_status'] = 'already_out';
+                    $staffMember['status'] = 'Checked Out';
+                    $staffMember['time_out'] = $existingStaffAtt['time_out'];
+                }
                 $student = $staffMember;
             } else {
-                $resolvedStatus = AttendanceRules::resolveCurrentStatus();
-                if ($resolvedStatus === 'Denied') {
-                    $staffMember['is_staff'] = true;
-                    $staffMember['scan_status'] = 'denied';
-                    $staffMember['status'] = 'Denied';
+                // If scanned during dismissal time, record departure
+                if (AttendanceRules::isDismissalTime()) {
+                    $this->db->prepare(
+                        "INSERT INTO staff_attendance (staff_id, school_id, date, time_in, time_out, status, scan_method, created_at)
+                         VALUES (?, 1, ?, ?, ?, 'Present', 'qr_web', NOW())"
+                    )->execute([$staffId, $today, date('H:i:s'), date('H:i:s')]);
+
+                    $staffMember['scan_status'] = 'checkout';
+                    $staffMember['status'] = 'Checked Out';
+                    $staffMember['time_out'] = $nowTime;
+                    $student = $staffMember;
+                } else {
+                    $resolvedStatus = AttendanceRules::resolveCurrentStatus();
+                    if ($resolvedStatus === 'Denied') {
+                        $staffMember['scan_status'] = 'denied';
+                        $staffMember['status'] = 'Denied';
+                        $staffMember['time_in'] = $nowTime;
+                        $student = $staffMember;
+                        require __DIR__ . '/../views/public/attendance_scan.php';
+                        exit;
+                    }
+
+                    $this->db->prepare(
+                        "INSERT INTO staff_attendance (staff_id, school_id, date, time_in, status, scan_method, created_at)
+                         VALUES (?, 1, ?, ?, ?, 'qr_web', NOW())"
+                    )->execute([$staffId, $today, date('H:i:s'), $resolvedStatus]);
+
+                    $staffMember['scan_status'] = 'success';
+                    $staffMember['status'] = $resolvedStatus;
                     $staffMember['time_in'] = $nowTime;
                     $student = $staffMember;
-                    require __DIR__ . '/../views/public/attendance_scan.php';
-                    exit;
                 }
-
-                $this->db->prepare(
-                    "INSERT INTO staff_attendance (staff_id, school_id, date, time_in, status, scan_method, created_at)
-                     VALUES (?, 1, ?, ?, ?, 'qr_web', NOW())"
-                )->execute([$staffId, $today, $nowTime, $resolvedStatus]);
-
-                $staffMember['is_staff'] = true;
-                $staffMember['scan_status'] = 'success';
-                $staffMember['status'] = $resolvedStatus;
-                $staffMember['time_in'] = $nowTime;
-                $student = $staffMember;
             }
 
             require __DIR__ . '/../views/public/attendance_scan.php';
@@ -537,56 +569,152 @@ final class PublicController
 
         $today       = date('Y-m-d');
         $nowTime     = date('H:i');
+        $nowTimeFull = date('H:i:s');
         $applicantId = (int) $applicant['id'];
+        $schoolId    = (int) ($applicant['school_id'] ?? 1);
 
         // Check if already marked today
         $checkStmt = $this->db->prepare(
-            "SELECT id, status, time_in FROM attendance WHERE applicant_id = ? AND date = ? LIMIT 1"
+            "SELECT id, status, time_in, time_out FROM attendance WHERE applicant_id = ? AND date = ? LIMIT 1"
         );
         $checkStmt->execute([$applicantId, $today]);
         $existing = $checkStmt->fetch();
 
         if ($existing) {
-            // Already scanned — show info, no duplicate SMS
-            $applicant['scan_status'] = 'already';
-            $applicant['status']      = $existing['status'];
-            $applicant['time_in']     = $existing['time_in'];
+            if (empty($existing['time_out'])) {
+                $timeInSeconds = !empty($existing['time_in']) ? strtotime($today . ' ' . $existing['time_in']) : (time() - 3600);
+                $diffMinutes = (int) round((time() - $timeInSeconds) / 60);
+
+                if ($diffMinutes >= 15 || AttendanceRules::isDismissalTime()) {
+                    // Record Check-out
+                    $this->db->prepare(
+                        "UPDATE attendance SET time_out = ?, time_in = COALESCE(time_in, ?), scan_method = 'qr_web' WHERE id = ?"
+                    )->execute([$nowTimeFull, $nowTimeFull, $existing['id']]);
+
+                    // Insert exit log
+                    $chkExit = $this->db->prepare("SELECT id FROM student_exit_logs WHERE student_id = ? AND exit_date = ? LIMIT 1");
+                    $chkExit->execute([$applicantId, $today]);
+                    if (!$chkExit->fetch()) {
+                        $isEarly = (date('H:i') < AttendanceRules::getDismissalTime());
+                        $exitType = $isEarly ? 'early' : 'normal';
+                        $exitReason = $isEarly ? 'Early Departure' : 'Normal Dismissal';
+                        $this->db->prepare(
+                            "INSERT INTO student_exit_logs
+                                (school_id, student_id, attendance_id, exit_type, exit_reason, exit_date, exit_time, exited_at, scan_method, qr_token, verification_status, sms_status, created_at)
+                             VALUES
+                                (?, ?, ?, ?, ?, ?, ?, NOW(), 'qr_camera', ?, 'verified', 'pending', NOW())"
+                        )->execute([$schoolId, $applicantId, (int)$existing['id'], $exitType, $exitReason, $today, $nowTimeFull, $token]);
+                    }
+
+                    // Dispatch Check-out Notification
+                    if ((int) setting('attendance_checkout_sms_enabled', 1) || (int) setting('attendance_checkout_email_enabled', 1)) {
+                        $exitData = [
+                            'exit_date'          => $today,
+                            'exit_time'          => $nowTimeFull,
+                            'exit_type'          => 'normal',
+                            'exit_reason'        => 'School Departure',
+                            'pickup_person_name' => 'Self / Guardian'
+                        ];
+                        AttendanceService::dispatchCheckoutNotification($applicant, $exitData, (int)$existing['id']);
+                    }
+
+                    $applicant['scan_status'] = 'checkout';
+                    $applicant['status']      = 'Checked Out';
+                    $applicant['time_out']    = $nowTime;
+                    $applicant['time_in']     = $existing['time_in'];
+                } else {
+                    $applicant['scan_status'] = 'already';
+                    $applicant['status']      = $existing['status'];
+                    $applicant['time_in']     = $existing['time_in'];
+                }
+            } else {
+                $applicant['scan_status'] = 'already_out';
+                $applicant['status']      = 'Checked Out';
+                $applicant['time_out']    = $existing['time_out'];
+            }
             $student = $applicant;
         } else {
-            // Determine status via time rules
-            $resolvedStatus = AttendanceRules::resolveCurrentStatus();
+            // If scanned during dismissal period, record as dismissal check-out
+            if (AttendanceRules::isDismissalTime()) {
+                $ins = $this->db->prepare(
+                    "INSERT INTO attendance (applicant_id, class_id, school_id, date, time_in, time_out, status, scan_method, alert_sent, timeout_alert_sent, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, 'Present', 'qr_web', 1, 0, NOW())"
+                );
+                $ins->execute([
+                    $applicantId,
+                    $applicant['class_id'] ?? null,
+                    $schoolId,
+                    $today,
+                    $nowTimeFull,
+                    $nowTimeFull,
+                ]);
+                $attendanceId = (int) $this->db->lastInsertId();
 
-            if ($resolvedStatus === 'Denied') {
-                // Attendance window is closed — deny the scan
-                $applicant['scan_status'] = 'denied';
-                $applicant['status']      = 'Denied';
+                $isEarly = (date('H:i') < AttendanceRules::getDismissalTime());
+                $exitType = $isEarly ? 'early' : 'normal';
+                $exitReason = $isEarly ? 'Early Departure' : 'Normal Dismissal';
+                $this->db->prepare(
+                    "INSERT INTO student_exit_logs
+                        (school_id, student_id, attendance_id, exit_type, exit_reason, exit_date, exit_time, exited_at, scan_method, qr_token, verification_status, sms_status, created_at)
+                     VALUES
+                        (?, ?, ?, ?, ?, ?, ?, NOW(), 'qr_camera', ?, 'verified', 'pending', NOW())"
+                )->execute([$schoolId, $applicantId, $attendanceId, $exitType, $exitReason, $today, $nowTimeFull, $token]);
+
+                if ((int) setting('attendance_checkout_sms_enabled', 1) || (int) setting('attendance_checkout_email_enabled', 1)) {
+                    $exitData = [
+                        'exit_date'          => $today,
+                        'exit_time'          => $nowTimeFull,
+                        'exit_type'          => 'normal',
+                        'exit_reason'        => 'School Dismissal',
+                        'pickup_person_name' => 'Self / Guardian'
+                    ];
+                    AttendanceService::dispatchCheckoutNotification($applicant, $exitData, $attendanceId);
+                }
+
+                $applicant['scan_status'] = 'checkout';
+                $applicant['status']      = 'Checked Out';
+                $applicant['time_out']    = $nowTime;
+                $student = $applicant;
+            } else {
+                // Determine status via time rules
+                $resolvedStatus = AttendanceRules::resolveCurrentStatus();
+
+                if ($resolvedStatus === 'Denied') {
+                    $allowLateAfterClose = (bool) (int) setting('attendance_allow_late_after_close', 1);
+                    if (!$allowLateAfterClose) {
+                        $applicant['scan_status'] = 'denied';
+                        $applicant['status']      = 'Denied';
+                        $applicant['time_in']     = $nowTime;
+                        $student = $applicant;
+                        require __DIR__ . '/../views/public/attendance_scan.php';
+                        exit;
+                    }
+                    $resolvedStatus = 'Late';
+                }
+
+                // Insert attendance record
+                $ins = $this->db->prepare(
+                    "INSERT INTO attendance (applicant_id, class_id, school_id, date, time_in, status, scan_method, alert_sent, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, 'qr_web', 0, NOW())"
+                );
+                $ins->execute([
+                    $applicantId,
+                    $applicant['class_id'] ?? null,
+                    $schoolId,
+                    $today,
+                    $nowTimeFull,
+                    $resolvedStatus,
+                ]);
+                $attendanceId = (int) $this->db->lastInsertId();
+
+                $applicant['scan_status'] = 'success';
+                $applicant['status']      = $resolvedStatus;
                 $applicant['time_in']     = $nowTime;
                 $student = $applicant;
-                require __DIR__ . '/../views/public/attendance_scan.php';
-                exit;
+
+                // ── Dispatch Attendance Notifications (SMS, Email, WhatsApp) ────────
+                AttendanceService::dispatchCheckinNotification($applicant, $nowTimeFull, $resolvedStatus, $attendanceId);
             }
-
-            // Insert attendance record
-            $ins = $this->db->prepare(
-                "INSERT INTO attendance (applicant_id, class_id, date, time_in, status, alert_sent, created_at)
-                 VALUES (?, ?, ?, ?, ?, 0, NOW())"
-            );
-            $ins->execute([
-                $applicantId,
-                $applicant['class_id'] ?? null,
-                $today,
-                $nowTime,
-                $resolvedStatus,
-            ]);
-            $attendanceId = (int) $this->db->lastInsertId();
-
-            $applicant['scan_status'] = 'success';
-            $applicant['status']      = $resolvedStatus;
-            $applicant['time_in']     = $nowTime;
-            $student = $applicant;
-
-            // ── Dispatch Attendance Notifications (SMS, Email, WhatsApp) ────────
-            AttendanceService::dispatchCheckinNotification($applicant, $nowTime, $resolvedStatus, $attendanceId);
         }
 
         require __DIR__ . '/../views/public/attendance_scan.php';
