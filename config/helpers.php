@@ -731,14 +731,74 @@ function current_term(): string
 
 function generate_receipt_number(PDO $db): string
 {
-    $count = (int) $db->query("SELECT COUNT(*)+1 FROM student_fee_payments")->fetchColumn();
-    return 'RCT-' . date('Y') . '-' . str_pad((string) $count, 5, '0', STR_PAD_LEFT);
+    $year = date('Y');
+    $prefix = 'RCT-' . $year . '-';
+
+    $stmt = $db->prepare("SELECT receipt_number FROM student_fee_payments WHERE receipt_number LIKE ?");
+    $stmt->execute([$prefix . '%']);
+    $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $maxNum = 0;
+    foreach ($rows as $rct) {
+        if (preg_match('/^RCT-\d{4}-(\d+)$/', (string)$rct, $m)) {
+            $val = (int)$m[1];
+            if ($val > $maxNum) {
+                $maxNum = $val;
+            }
+        }
+    }
+
+    $count = (int) $db->query("SELECT COUNT(*) FROM student_fee_payments")->fetchColumn();
+    $nextNum = max($maxNum + 1, $count + 1);
+    $candidate = $prefix . str_pad((string) $nextNum, 5, '0', STR_PAD_LEFT);
+
+    $checkStmt = $db->prepare("SELECT id FROM student_fee_payments WHERE receipt_number = ? LIMIT 1");
+    while (true) {
+        $checkStmt->execute([$candidate]);
+        if (!$checkStmt->fetch()) {
+            break;
+        }
+        $nextNum++;
+        $candidate = $prefix . str_pad((string) $nextNum, 5, '0', STR_PAD_LEFT);
+    }
+
+    return $candidate;
 }
 
 function generate_staff_id(PDO $db): string
 {
-    $count = (int) $db->query("SELECT COUNT(*)+1 FROM staff")->fetchColumn();
-    return 'STF-' . date('Y') . '-' . str_pad((string) $count, 4, '0', STR_PAD_LEFT);
+    $year = date('Y');
+    $prefix = 'STF-' . $year . '-';
+
+    $stmt = $db->prepare("SELECT staff_id FROM staff WHERE staff_id LIKE ?");
+    $stmt->execute([$prefix . '%']);
+    $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $maxNum = 0;
+    foreach ($rows as $sid) {
+        if (preg_match('/^STF-\d{4}-(\d+)$/', (string)$sid, $m)) {
+            $val = (int)$m[1];
+            if ($val > $maxNum) {
+                $maxNum = $val;
+            }
+        }
+    }
+
+    $count = (int) $db->query("SELECT COUNT(*) FROM staff")->fetchColumn();
+    $nextNum = max($maxNum + 1, $count + 1);
+    $candidate = $prefix . str_pad((string) $nextNum, 4, '0', STR_PAD_LEFT);
+
+    $checkStmt = $db->prepare("SELECT id FROM staff WHERE staff_id = ? LIMIT 1");
+    while (true) {
+        $checkStmt->execute([$candidate]);
+        if (!$checkStmt->fetch()) {
+            break;
+        }
+        $nextNum++;
+        $candidate = $prefix . str_pad((string) $nextNum, 4, '0', STR_PAD_LEFT);
+    }
+
+    return $candidate;
 }
 
 function generate_temp_password(): string
@@ -837,8 +897,37 @@ function generate_invoice_number(PDO $db): string
 {
     $prefix = platform_setting('invoice_prefix', 'INV');
     $year   = date('Y');
-    $count  = (int) $db->query("SELECT COUNT(*) + 1 FROM customer_invoices WHERE YEAR(created_at) = {$year}")->fetchColumn();
-    return $prefix . '-' . $year . '-' . str_pad((string) $count, 5, '0', STR_PAD_LEFT);
+    $fullPrefix = $prefix . '-' . $year . '-';
+
+    $stmt = $db->prepare("SELECT invoice_number FROM customer_invoices WHERE invoice_number LIKE ?");
+    $stmt->execute([$fullPrefix . '%']);
+    $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $maxNum = 0;
+    foreach ($rows as $inv) {
+        if (preg_match('/-(\d+)$/', (string)$inv, $m)) {
+            $val = (int)$m[1];
+            if ($val > $maxNum) {
+                $maxNum = $val;
+            }
+        }
+    }
+
+    $count = (int) $db->query("SELECT COUNT(*) FROM customer_invoices WHERE YEAR(created_at) = {$year}")->fetchColumn();
+    $nextNum = max($maxNum + 1, $count + 1);
+    $candidate = $fullPrefix . str_pad((string) $nextNum, 5, '0', STR_PAD_LEFT);
+
+    $checkStmt = $db->prepare("SELECT id FROM customer_invoices WHERE invoice_number = ? LIMIT 1");
+    while (true) {
+        $checkStmt->execute([$candidate]);
+        if (!$checkStmt->fetch()) {
+            break;
+        }
+        $nextNum++;
+        $candidate = $fullPrefix . str_pad((string) $nextNum, 5, '0', STR_PAD_LEFT);
+    }
+
+    return $candidate;
 }
 
 function generate_customer_api_key(): string

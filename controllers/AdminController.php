@@ -1944,15 +1944,27 @@ final class AdminController
             StaffAudit::log('staff.updated', 'staff', $id, "Updated staff profile for {$firstName} {$lastName}", json_encode($prevStaff), json_encode($_POST));
             flash('success', 'Staff profile updated successfully.');
         } else {
-            $staffId = generate_staff_id($this->db);
-            $token = 'ATTENDANCE-STF-NEW-' . substr(md5(uniqid('', true)), 0, 10);
-            $stmt = $this->db->prepare(
-                "INSERT INTO staff (staff_id, qr_data, first_name, last_name, email, phone, role, role_id, department, status, qualification, salary, gender, blood_group, emergency_contact_name, emergency_contact_phone, address, passport_photo)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-            );
-            $stmt->execute([$staffId, $token, $firstName, $lastName, $email ?: null, $phone, $roleStr, $roleId, $department ?: null, $status, $qualification, $salary, $gender, $bloodGroup ?: null, $emergencyContactName ?: null, $emergencyContactPhone ?: null, $address ?: null, $passportPhoto]);
+            $newStaffRowId = 0;
+            $staffId = '';
+            for ($attempt = 0; $attempt < 5; $attempt++) {
+                $staffId = generate_staff_id($this->db);
+                $token = 'ATTENDANCE-STF-NEW-' . substr(md5(uniqid('', true)), 0, 10);
+                try {
+                    $stmt = $this->db->prepare(
+                        "INSERT INTO staff (staff_id, qr_data, first_name, last_name, email, phone, role, role_id, department, status, qualification, salary, gender, blood_group, emergency_contact_name, emergency_contact_phone, address, passport_photo)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    );
+                    $stmt->execute([$staffId, $token, $firstName, $lastName, $email ?: null, $phone, $roleStr, $roleId, $department ?: null, $status, $qualification, $salary, $gender, $bloodGroup ?: null, $emergencyContactName ?: null, $emergencyContactPhone ?: null, $address ?: null, $passportPhoto]);
+                    $newStaffRowId = (int) $this->db->lastInsertId();
+                    break;
+                } catch (PDOException $e) {
+                    if ($e->getCode() == 23000 && str_contains($e->getMessage(), 'staff.staff_id')) {
+                        continue;
+                    }
+                    throw $e;
+                }
+            }
 
-            $newStaffRowId = (int) $this->db->lastInsertId();
             if ($newStaffRowId > 0) {
                 // Ensure deterministic QR token with row ID
                 $finalToken = 'ATTENDANCE-STF-' . $newStaffRowId . '-' . substr(md5($staffId . '_' . $newStaffRowId), 0, 8);
