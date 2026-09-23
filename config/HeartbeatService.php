@@ -22,7 +22,7 @@ final class HeartbeatService
     public static function send(): array
     {
         $lic = ApiKeyService::loadLocalLicense();
-        $apiKey = $lic['api_key'] ?? '';
+        $apiKey = !empty($lic['api_key']) ? $lic['api_key'] : ($lic['license_key'] ?? '');
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         if (str_contains($domain, ':')) {
             $domain = explode(':', $domain)[0];
@@ -44,6 +44,7 @@ final class HeartbeatService
 
         $payload = [
             'api_key' => $apiKey,
+            'license_key' => $lic['license_key'] ?? '',
             'domain' => $domain,
             'installation_id' => ApiKeyService::getInstallationId(),
             'version' => defined('EDUCORE_VERSION') ? EDUCORE_VERSION : '1.0.0',
