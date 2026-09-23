@@ -214,6 +214,7 @@ final class ApiKeyService
             return [
                 'success' => false,
                 'status' => $response['status'],
+                'message' => 'License status: ' . $response['status'],
                 'domain' => $domain,
                 'plan' => $lic['plan'] ?? 'basic',
                 'features' => []
@@ -221,8 +222,9 @@ final class ApiKeyService
         }
 
         return [
-            'success' => ($lic['status'] === 'active'),
+            'success' => false,
             'status' => 'offline',
+            'message' => 'EduCore Live Server unreachable. Operating in Offline Grace Mode.',
             'domain' => $domain,
             'plan' => $lic['plan'] ?? 'basic',
             'features' => $lic['features'] ?? []
@@ -257,37 +259,25 @@ final class ApiKeyService
         $baseUrl = defined('EDUCORE_LIVE_URL') ? EDUCORE_LIVE_URL : 'https://educore.skysaveings.com.ng';
         
         $urlsToTry = [];
-        $urlsToTry[] = $baseUrl . '/index.php?route=' . ltrim($endpointRoute, '/');
-        $urlsToTry[] = $baseUrl . '/' . ltrim($endpointRoute, '/');
+        $cleanRoute = ltrim($endpointRoute, '/');
+        $urlsToTry[] = $baseUrl . '/' . $cleanRoute;
+        $urlsToTry[] = $baseUrl . '/index.php?route=' . $cleanRoute;
 
         // Check for common live URL variation (skysavings vs skysaveings)
         if (str_contains($baseUrl, 'educore.skysaveings.com.ng')) {
             $altLive = str_replace('skysaveings.com.ng', 'skysavings.com.ng', $baseUrl);
-            $urlsToTry[] = $altLive . '/index.php?route=' . ltrim($endpointRoute, '/');
-            $urlsToTry[] = $altLive . '/' . ltrim($endpointRoute, '/');
-        } elseif (str_contains($baseUrl, 'educore.skysavings.com.ng')) {
-            $altLive = str_replace('skysavings.com.ng', 'skysaveings.com.ng', $baseUrl);
-            $urlsToTry[] = $altLive . '/index.php?route=' . ltrim($endpointRoute, '/');
-            $urlsToTry[] = $altLive . '/' . ltrim($endpointRoute, '/');
+            $urlsToTry[] = $altLive . '/' . $cleanRoute;
+            $urlsToTry[] = $altLive . '/index.php?route=' . $cleanRoute;
         }
 
-        // If baseUrl has /EduCore-LicenseServer or similar, also try root domain
+        // If baseUrl has subpaths, also try root domain
         $parsed = parse_url($baseUrl);
         if (!empty($parsed['scheme']) && !empty($parsed['host'])) {
             $rootBase = $parsed['scheme'] . '://' . $parsed['host'] . (!empty($parsed['port']) ? ':' . $parsed['port'] : '');
             if ($rootBase !== $baseUrl) {
-                $urlsToTry[] = $rootBase . '/index.php?route=' . ltrim($endpointRoute, '/');
-                $urlsToTry[] = $rootBase . '/' . ltrim($endpointRoute, '/');
+                $urlsToTry[] = $rootBase . '/' . $cleanRoute;
+                $urlsToTry[] = $rootBase . '/index.php?route=' . $cleanRoute;
             }
-        }
-
-        // If local environment, also try local WAMP License Server
-        $hostName = strtolower($_SERVER['HTTP_HOST'] ?? 'localhost');
-        if (str_starts_with($hostName, 'localhost') || str_starts_with($hostName, '127.0.0.1')) {
-            $urlsToTry[] = 'http://localhost/EduCore-LicenseServer/index.php?route=' . ltrim($endpointRoute, '/');
-            $urlsToTry[] = 'http://localhost/EduCore-LicenseServer/' . ltrim($endpointRoute, '/');
-            $urlsToTry[] = 'http://127.0.0.1/EduCore-LicenseServer/index.php?route=' . ltrim($endpointRoute, '/');
-            $urlsToTry[] = 'http://127.0.0.1/EduCore-LicenseServer/' . ltrim($endpointRoute, '/');
         }
 
         foreach (array_unique($urlsToTry) as $url) {
@@ -298,11 +288,14 @@ final class ApiKeyService
                 CURLOPT_POSTFIELDS => $payload,
                 CURLOPT_HTTPHEADER => [
                     'Content-Type: application/json',
+                    'Accept: application/json',
                     'X-API-Key: ' . $apiKey,
                     'X-Installation-Token: ' . $instToken,
                     'X-Timestamp: ' . $timestamp,
                     'X-Signature: ' . $signature
                 ],
+                CURLOPT_USERAGENT => 'EduCore-Client/' . (defined('EDUCORE_VERSION') ? EDUCORE_VERSION : '2.0.0'),
+                CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
                 CURLOPT_CONNECTTIMEOUT => 4,
                 CURLOPT_TIMEOUT => 6,
                 CURLOPT_FOLLOWLOCATION => true,

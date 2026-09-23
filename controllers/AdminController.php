@@ -4372,10 +4372,11 @@ final class AdminController
 
         if ($forceSync) {
             $syncRes = ApiKeyService::validateOnline();
-            if ($syncRes['success'] ?? false) {
-                flash('success', "License successfully synchronized with EduCore Live server. Status: " . ucfirst($syncRes['status'] ?? 'Active') . " (" . ucfirst($syncRes['plan'] ?? 'Professional') . " Plan).");
+            if (($syncRes['status'] ?? '') === 'active') {
+                flash('success', "License successfully synchronized with EduCore Live server! Status: Active (" . ucfirst($syncRes['plan'] ?? 'Professional') . " Plan).");
             } else {
-                flash('warning', "License server sync response: " . ($syncRes['message'] ?? 'Operating offline') . ". Offline grace protection active.");
+                $grace = ApiKeyService::getGracePeriodInfo();
+                flash('warning', "Live license sync notice: " . ($syncRes['message'] ?? 'Operating offline') . " — " . $grace['remaining_grace_days'] . " days remaining in grace period.");
             }
             redirect('admin/updates');
         }
