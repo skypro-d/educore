@@ -15,6 +15,7 @@ require_once __DIR__ . '/../version.php';
 final class ApiKeyService
 {
     private static ?array $cachedLicense = null;
+    private static string $lastError = '';
 
     /**
      * Cache file path
@@ -31,9 +32,9 @@ final class ApiKeyService
     /**
      * Load local license file
      */
-    public static function loadLocalLicense(): array
+    public static function loadLocalLicense(bool $forceReload = false): array
     {
-        if (self::$cachedLicense !== null) {
+        if (!$forceReload && self::$cachedLicense !== null) {
             return self::$cachedLicense;
         }
 
@@ -41,8 +42,10 @@ final class ApiKeyService
         if (file_exists($file)) {
             $content = file_get_contents($file);
             $data = json_decode($content, true) ?: [];
-            self::$cachedLicense = $data;
-            return self::$cachedLicense;
+            if (!empty($data)) {
+                self::$cachedLicense = $data;
+                return self::$cachedLicense;
+            }
         }
 
         self::$cachedLicense = [
@@ -224,11 +227,19 @@ final class ApiKeyService
         return [
             'success' => false,
             'status' => 'offline',
-            'message' => 'EduCore Live Server unreachable. Operating in Offline Grace Mode.',
+            'message' => !empty(self::$lastError) ? self::$lastError : 'EduCore Live Server unreachable. Operating in Offline Grace Mode.',
             'domain' => $domain,
             'plan' => $lic['plan'] ?? 'basic',
             'features' => $lic['features'] ?? []
         ];
+    }
+
+    /**
+     * Get last network error message
+     */
+    public static function getLastError(): string
+    {
+        return self::$lastError;
     }
 
     /**
@@ -280,6 +291,8 @@ final class ApiKeyService
             }
         }
 
+        self::$lastError = '';
+
         foreach (array_unique($urlsToTry) as $url) {
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -296,8 +309,8 @@ final class ApiKeyService
                 ],
                 CURLOPT_USERAGENT => 'EduCore-Client/' . (defined('EDUCORE_VERSION') ? EDUCORE_VERSION : '2.0.0'),
                 CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
-                CURLOPT_CONNECTTIMEOUT => 4,
-                CURLOPT_TIMEOUT => 6,
+                CURLOPT_CONNECTTIMEOUT => 15,
+                CURLOPT_TIMEOUT => 25,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
                 CURLOPT_SSL_VERIFYHOST => 0
@@ -305,13 +318,22 @@ final class ApiKeyService
 
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $cError = curl_error($ch);
             curl_close($ch);
+
+            if ($cError) {
+                self::$lastError = "Connection error ({$url}): {$cError}";
+            } elseif ($httpCode !== 200 && $httpCode !== 201) {
+                self::$lastError = "Server returned HTTP {$httpCode} from {$url}";
+            }
 
             if ($response !== false && ($httpCode === 200 || $httpCode === 201)) {
                 $decoded = json_decode($response, true);
                 if (is_array($decoded)) {
+                    self::$lastError = '';
                     return $decoded;
                 }
+                self::$lastError = "Server returned non-JSON response from {$url}";
             }
         }
 
