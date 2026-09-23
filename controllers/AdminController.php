@@ -4368,6 +4368,18 @@ final class AdminController
         require_once __DIR__ . '/../updater/UpdateChecker.php';
 
         $forceCheck = isset($_GET['check']) && $_GET['check'] === 'now';
+        $forceSync = isset($_GET['sync']) && $_GET['sync'] === 'now';
+
+        if ($forceSync) {
+            $syncRes = ApiKeyService::validateOnline();
+            if ($syncRes['success'] ?? false) {
+                flash('success', "License successfully synchronized with EduCore Live server. Status: " . ucfirst($syncRes['status'] ?? 'Active') . " (" . ucfirst($syncRes['plan'] ?? 'Professional') . " Plan).");
+            } else {
+                flash('warning', "License server sync response: " . ($syncRes['message'] ?? 'Operating offline') . ". Offline grace protection active.");
+            }
+            redirect('admin/updates');
+        }
+
         $updateInfo = UpdateChecker::check($forceCheck);
 
         // Handle POST actions

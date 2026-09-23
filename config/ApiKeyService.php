@@ -260,6 +260,17 @@ final class ApiKeyService
         $urlsToTry[] = $baseUrl . '/index.php?route=' . ltrim($endpointRoute, '/');
         $urlsToTry[] = $baseUrl . '/' . ltrim($endpointRoute, '/');
 
+        // Check for common live URL variation (skysavings vs skysaveings)
+        if (str_contains($baseUrl, 'educore.skysaveings.com.ng')) {
+            $altLive = str_replace('skysaveings.com.ng', 'skysavings.com.ng', $baseUrl);
+            $urlsToTry[] = $altLive . '/index.php?route=' . ltrim($endpointRoute, '/');
+            $urlsToTry[] = $altLive . '/' . ltrim($endpointRoute, '/');
+        } elseif (str_contains($baseUrl, 'educore.skysavings.com.ng')) {
+            $altLive = str_replace('skysavings.com.ng', 'skysaveings.com.ng', $baseUrl);
+            $urlsToTry[] = $altLive . '/index.php?route=' . ltrim($endpointRoute, '/');
+            $urlsToTry[] = $altLive . '/' . ltrim($endpointRoute, '/');
+        }
+
         // If baseUrl has /EduCore-LicenseServer or similar, also try root domain
         $parsed = parse_url($baseUrl);
         if (!empty($parsed['scheme']) && !empty($parsed['host'])) {
@@ -268,6 +279,15 @@ final class ApiKeyService
                 $urlsToTry[] = $rootBase . '/index.php?route=' . ltrim($endpointRoute, '/');
                 $urlsToTry[] = $rootBase . '/' . ltrim($endpointRoute, '/');
             }
+        }
+
+        // If local environment, also try local WAMP License Server
+        $hostName = strtolower($_SERVER['HTTP_HOST'] ?? 'localhost');
+        if (str_starts_with($hostName, 'localhost') || str_starts_with($hostName, '127.0.0.1')) {
+            $urlsToTry[] = 'http://localhost/EduCore-LicenseServer/index.php?route=' . ltrim($endpointRoute, '/');
+            $urlsToTry[] = 'http://localhost/EduCore-LicenseServer/' . ltrim($endpointRoute, '/');
+            $urlsToTry[] = 'http://127.0.0.1/EduCore-LicenseServer/index.php?route=' . ltrim($endpointRoute, '/');
+            $urlsToTry[] = 'http://127.0.0.1/EduCore-LicenseServer/' . ltrim($endpointRoute, '/');
         }
 
         foreach (array_unique($urlsToTry) as $url) {
@@ -283,7 +303,8 @@ final class ApiKeyService
                     'X-Timestamp: ' . $timestamp,
                     'X-Signature: ' . $signature
                 ],
-                CURLOPT_TIMEOUT => 8,
+                CURLOPT_CONNECTTIMEOUT => 4,
+                CURLOPT_TIMEOUT => 6,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false,
                 CURLOPT_SSL_VERIFYHOST => 0
@@ -294,7 +315,10 @@ final class ApiKeyService
             curl_close($ch);
 
             if ($response !== false && ($httpCode === 200 || $httpCode === 201)) {
-                return json_decode($response, true);
+                $decoded = json_decode($response, true);
+                if (is_array($decoded)) {
+                    return $decoded;
+                }
             }
         }
 
@@ -338,19 +362,27 @@ final class ApiKeyService
     public static function renderOfflineNotice(): string
     {
         $info = self::getGracePeriodInfo();
+        $syncUrl = function_exists('url') ? url('admin/updates?sync=now') : 'updates?sync=now';
+
         if ($info['is_grace_expired']) {
             return '
-            <div class="alert alert-danger border-danger text-center p-3 mb-4 rounded-3 shadow-sm">
-                <i class="bi bi-exclamation-octagon-fill me-2"></i>
-                <strong>Offline Grace Period Expired (' . $info['grace_period_days'] . ' Days)</strong> — Premium modules (CBT, SMS, AI) are restricted until system reconnects to EduCore Live. Core student records, attendance, and fee ledgers remain 100% accessible.
+            <div class="alert alert-danger border-danger d-flex align-items-center justify-content-between p-3 mb-4 rounded-3 shadow-sm">
+                <div>
+                    <i class="bi bi-exclamation-octagon-fill me-2"></i>
+                    <strong>Offline Grace Period Expired (' . $info['grace_period_days'] . ' Days)</strong> — Premium modules (CBT, SMS, AI) are restricted until system reconnects to EduCore Live. Core student records, attendance, and fee ledgers remain accessible.
+                </div>
+                <a href="' . $syncUrl . '" class="btn btn-sm btn-danger shadow-sm ms-3 text-nowrap"><i class="bi bi-arrow-repeat me-1"></i> Sync License Now</a>
             </div>';
         }
 
         if ($info['remaining_grace_days'] <= 7 && $info['days_offline'] > 1) {
             return '
-            <div class="alert alert-warning border-warning text-center p-3 mb-4 rounded-3 shadow-sm">
-                <i class="bi bi-wifi-off me-2 text-warning"></i>
-                <strong>Operating in Offline Grace Mode (' . $info['remaining_grace_days'] . ' Days Remaining)</strong> — Please connect your server to the internet to synchronize your license.
+            <div class="alert alert-warning border-warning d-flex align-items-center justify-content-between p-3 mb-4 rounded-3 shadow-sm">
+                <div>
+                    <i class="bi bi-wifi-off me-2 text-warning"></i>
+                    <strong>Operating in Offline Grace Mode (' . $info['remaining_grace_days'] . ' Days Remaining)</strong> — Please connect your server to the internet or click below to synchronize your license.
+                </div>
+                <a href="' . $syncUrl . '" class="btn btn-sm btn-warning shadow-sm ms-3 text-nowrap fw-semibold"><i class="bi bi-arrow-repeat me-1"></i> Sync Now</a>
             </div>';
         }
 

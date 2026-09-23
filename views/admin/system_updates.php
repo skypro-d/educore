@@ -16,6 +16,9 @@
         <p class="text-muted small mb-0">Manage automatic updates, database migrations, backups, and licensing synchronization with EduCore Live.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
+        <a href="<?= url('admin/updates?sync=now') ?>" class="btn btn-outline-success btn-sm px-3 shadow-sm rounded-3">
+            <i class="ti ti-key me-1"></i> Sync License
+        </a>
         <a href="<?= url('admin/updates?check=now') ?>" class="btn btn-outline-primary btn-sm px-3 shadow-sm rounded-3">
             <i class="ti ti-refresh me-1"></i> Check for Updates
         </a>
