@@ -491,11 +491,12 @@ function role_allows(string $permission): bool
     $map = [
         'admission_officer' => ['applications', 'interviews', 'exams', 'letters'],
         'accountant' => ['payments', 'reports', 'fees'],
-        'principal' => ['reports', 'applications', 'results', 'attendance', 'exit_scanner', 'exit_logs', 'exit_settings'],
+        'principal' => ['reports', 'applications', 'results', 'attendance', 'scanner_assignments', 'scanner_logs', 'exit_scanner', 'exit_logs', 'exit_settings'],
         'staff' => ['applications', 'attendance', 'results', 'exit_scanner', 'exit_logs'],
-        'gate_officer' => ['exit_scanner', 'exit_logs'],
+        'gate_officer' => ['exit_scanner', 'exit_logs', 'scanner'],
+        'scanner_officer' => ['scanner'],
         'security' => ['exit_scanner', 'exit_logs'],
-        'admin' => ['applications', 'classes', 'settings', 'payments', 'reports', 'interviews', 'exams', 'results', 'attendance', 'fees', 'subjects', 'staff', 'communications', 'promotion', 'library', 'transport', 'inventory', 'exit_scanner', 'exit_logs', 'exit_settings', 'gates', 'authorized_pickups'],
+        'admin' => ['applications', 'classes', 'settings', 'payments', 'reports', 'interviews', 'exams', 'results', 'attendance', 'scanner_assignments', 'scanner_logs', 'fees', 'subjects', 'staff', 'communications', 'promotion', 'library', 'transport', 'inventory', 'exit_scanner', 'exit_logs', 'exit_settings', 'gates', 'authorized_pickups'],
     ];
 
     $allowedList = $map[$role] ?? [];
@@ -511,6 +512,8 @@ function role_allows(string $permission): bool
         'manage_exit_settings'=> 'exit_settings',
         'retry_exit_sms'      => 'exit_logs',
         'export_exit_reports' => 'exit_logs',
+        'scanner_assignments' => 'scanner_assignments',
+        'scanner_logs'        => 'scanner_logs',
     ];
 
     if (isset($aliases[$permission]) && in_array($aliases[$permission], $allowedList, true)) {

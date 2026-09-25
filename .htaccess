@@ -27,6 +27,8 @@ RewriteRule ^/?parent/?$ parent/index.php?route=dashboard [L,QSA]
 RewriteRule ^/?parent/(.*)$ parent/index.php?route=$1 [L,QSA]
 RewriteRule ^/?teacher/?$ teacher/index.php?route=dashboard [L,QSA]
 RewriteRule ^/?teacher/(.*)$ teacher/index.php?route=$1 [L,QSA]
+RewriteRule ^/?scanner/?$ scanner/index.php?route=dashboard [L,QSA]
+RewriteRule ^/?scanner/(.*)$ scanner/index.php?route=$1 [L,QSA]
 
 RewriteRule ^/?payment/process/?$ payment/process.php [L,QSA]
 RewriteRule ^/?payment/success/?$ payment/success.php [L,QSA]

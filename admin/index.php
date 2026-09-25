@@ -173,6 +173,21 @@ if (preg_match('#^timetable/(\d+)/delete$#', $route, $m)) {
     $academic->deleteTimetableSlot((int) $m[1]);
     exit;
 }
+if (preg_match('#^scanner-assignments/(\d+)/toggle$#', $route, $m)) {
+    require_post();
+    $controller->toggleScannerAssignment((int) $m[1]);
+    exit;
+}
+if (preg_match('#^scanner-assignments/(\d+)/delete$#', $route, $m)) {
+    require_post();
+    $controller->deleteScannerAssignment((int) $m[1]);
+    exit;
+}
+if (preg_match('#^scanner-stations/(\d+)/delete$#', $route, $m)) {
+    require_post();
+    $controller->deleteScannerStation((int) $m[1]);
+    exit;
+}
 
 // Exact Switch routes
 switch ($route) {
@@ -397,6 +412,23 @@ switch ($route) {
     // Staff
     case 'staff':
         $_SERVER['REQUEST_METHOD'] === 'POST' ? $controller->saveStaff() : $controller->staff();
+        break;
+    case 'scanner-assignments':
+        $_SERVER['REQUEST_METHOD'] === 'POST' ? $controller->saveScannerAssignment() : $controller->scannerAssignments();
+        break;
+    case 'scanner-assignments/save':
+        require_post();
+        $controller->saveScannerAssignment();
+        break;
+    case 'scanner-stations/save':
+        require_post();
+        $controller->saveScannerStation();
+        break;
+    case 'scanner-logs':
+        $controller->scannerLogs();
+        break;
+    case 'scanner-logs/export':
+        $controller->exportScannerLogsCsv();
         break;
 
     // Secondary Modules

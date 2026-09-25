@@ -10,6 +10,7 @@ require_once __DIR__ . '/../models/ActivityLog.php';
 require_once __DIR__ . '/../models/Payment.php';
 require_once __DIR__ . '/NotificationController.php';
 require_once __DIR__ . '/../services/AttendanceService.php';
+require_once __DIR__ . '/../services/ScannerService.php';
 require_once __DIR__ . '/../updater/MigrationRunner.php';
 require_once __DIR__ . '/../services/StudentEnrollmentService.php';
 
@@ -4468,5 +4469,224 @@ final class AdminController
             'licenseData',
             'graceInfo'
         ), 'admin');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Scanner Staff Assignment & Stations Management
+    // ═══════════════════════════════════════════════════════════════════
+
+    public function scannerAssignments(): void
+    {
+        require_admin();
+        $schoolId = SchoolContext::id() ?? 1;
+        $scannerService = new ScannerService($this->db);
+
+        $assignments = $scannerService->getAllAssignments($schoolId);
+        $stations = $scannerService->getAllStations($schoolId);
+        $stats = $scannerService->getScannerStats($schoolId);
+
+        // Fetch active staff for assignment dropdown
+        $stmtStaff = $this->db->prepare(
+            "SELECT id, first_name, last_name, staff_id, role, department 
+             FROM staff 
+             WHERE school_id = ? AND status = 'Active' 
+             ORDER BY first_name ASC, last_name ASC"
+        );
+        $stmtStaff->execute([$schoolId]);
+        $activeStaff = $stmtStaff->fetchAll(PDO::FETCH_ASSOC);
+
+        render('admin/scanner_assignments', compact('assignments', 'stations', 'activeStaff', 'stats'), 'admin');
+    }
+
+    public function saveScannerAssignment(): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $id = (int) ($_POST['id'] ?? 0);
+        $staffId = (int) ($_POST['staff_id'] ?? 0);
+        $stationId = !empty($_POST['station_id']) ? (int) $_POST['station_id'] : null;
+        $status = $_POST['status'] ?? 'active';
+        $notes = trim($_POST['notes'] ?? '');
+        $assignedBy = (int) ($_SESSION['admin']['id'] ?? 0);
+        $schoolId = SchoolContext::id() ?? 1;
+
+        $permissions = [
+            'can_scan_in'              => !empty($_POST['can_scan_in']),
+            'can_scan_out'             => !empty($_POST['can_scan_out']),
+            'can_view_today_logs'      => !empty($_POST['can_view_today_logs']),
+            'can_view_student_details' => !empty($_POST['can_view_student_details'])
+        ];
+
+        $scannerService = new ScannerService($this->db);
+
+        try {
+            if ($id > 0) {
+                $scannerService->updateAssignment($id, $stationId, $status, $permissions, $notes, $schoolId);
+                flash('success', 'Scanner assignment updated successfully.');
+            } else {
+                if ($staffId <= 0) {
+                    flash('danger', 'Please select an active staff member.');
+                    redirect('admin/scanner-assignments');
+                }
+                $scannerService->assignStaff($staffId, $stationId, $permissions, $assignedBy, $notes, $schoolId);
+                flash('success', 'Staff member assigned as Scanner Officer successfully.');
+            }
+        } catch (Throwable $e) {
+            flash('danger', 'Error saving assignment: ' . $e->getMessage());
+        }
+
+        redirect('admin/scanner-assignments');
+    }
+
+    public function toggleScannerAssignment(int $id): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $status = $_POST['status'] ?? 'active';
+        $schoolId = SchoolContext::id() ?? 1;
+        $scannerService = new ScannerService($this->db);
+
+        try {
+            $scannerService->toggleAssignmentStatus($id, $status, $schoolId);
+            flash('success', "Scanner assignment status updated to {$status}.");
+        } catch (Throwable $e) {
+            flash('danger', 'Error updating status: ' . $e->getMessage());
+        }
+
+        redirect('admin/scanner-assignments');
+    }
+
+    public function deleteScannerAssignment(int $id): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $schoolId = SchoolContext::id() ?? 1;
+        $scannerService = new ScannerService($this->db);
+
+        try {
+            $scannerService->removeAssignment($id, $schoolId);
+            flash('success', 'Scanner assignment revoked and removed successfully.');
+        } catch (Throwable $e) {
+            flash('danger', 'Error removing assignment: ' . $e->getMessage());
+        }
+
+        redirect('admin/scanner-assignments');
+    }
+
+    public function saveScannerStation(): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $scannerService = new ScannerService($this->db);
+        $schoolId = SchoolContext::id() ?? 1;
+
+        try {
+            $scannerService->saveStation($_POST, $schoolId);
+            flash('success', 'Scanner station saved successfully.');
+        } catch (Throwable $e) {
+            flash('danger', 'Error saving station: ' . $e->getMessage());
+        }
+
+        redirect('admin/scanner-assignments');
+    }
+
+    public function deleteScannerStation(int $id): void
+    {
+        require_admin();
+        verify_csrf();
+
+        $scannerService = new ScannerService($this->db);
+        $schoolId = SchoolContext::id() ?? 1;
+
+        try {
+            $scannerService->deleteStation($id, $schoolId);
+            flash('success', 'Scanner station deleted successfully.');
+        } catch (Throwable $e) {
+            flash('danger', 'Error deleting station: ' . $e->getMessage());
+        }
+
+        redirect('admin/scanner-assignments');
+    }
+
+    public function scannerLogs(): void
+    {
+        require_admin();
+        $schoolId = SchoolContext::id() ?? 1;
+        $scannerService = new ScannerService($this->db);
+
+        $filters = [
+            'date_from'   => $_GET['date_from'] ?? date('Y-m-d'),
+            'date_to'     => $_GET['date_to'] ?? null,
+            'station_id'  => $_GET['station_id'] ?? null,
+            'staff_id'    => $_GET['staff_id'] ?? null,
+            'scan_action' => $_GET['scan_action'] ?? null,
+            'search'      => trim($_GET['search'] ?? '')
+        ];
+
+        $logs = $scannerService->getAllScannerLogs($schoolId, $filters, 200);
+        $stations = $scannerService->getAllStations($schoolId);
+
+        // Fetch list of scanner officers for filter
+        $stmtOfficers = $this->db->prepare(
+            "SELECT DISTINCT s.id, s.first_name, s.last_name, s.staff_id 
+             FROM scanner_assignments sa
+             JOIN staff s ON s.id = sa.staff_id
+             WHERE sa.school_id = ?
+             ORDER BY s.first_name ASC"
+        );
+        $stmtOfficers->execute([$schoolId]);
+        $officers = $stmtOfficers->fetchAll(PDO::FETCH_ASSOC);
+
+        render('admin/scanner_logs', compact('logs', 'stations', 'officers'), 'admin');
+    }
+
+    public function exportScannerLogsCsv(): void
+    {
+        require_admin();
+        $schoolId = SchoolContext::id() ?? 1;
+        $scannerService = new ScannerService($this->db);
+
+        $filters = [
+            'date_from'   => $_GET['date_from'] ?? null,
+            'date_to'     => $_GET['date_to'] ?? null,
+            'station_id'  => $_GET['station_id'] ?? null,
+            'staff_id'    => $_GET['staff_id'] ?? null,
+            'scan_action' => $_GET['scan_action'] ?? null,
+            'search'      => trim($_GET['search'] ?? '')
+        ];
+
+        $logs = $scannerService->getAllScannerLogs($schoolId, $filters, 5000);
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=scanner_activity_logs_' . date('Y_m_d_His') . '.csv');
+
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Log ID', 'Timestamp', 'Date', 'Officer Name', 'Officer Staff ID', 'Station Name', 'Student Name', 'Student ID', 'Class', 'Action', 'Status', 'Response Message', 'SMS Status', 'Email Status', 'IP Address']);
+
+        foreach ($logs as $row) {
+            fputcsv($out, [
+                $row['id'],
+                $row['scanned_at'],
+                $row['date'],
+                trim(($row['officer_first_name'] ?? '') . ' ' . ($row['officer_last_name'] ?? '')),
+                $row['officer_staff_id'] ?? '',
+                $row['station_name'] ?? '',
+                $row['student_name'] ?? '',
+                $row['student_admission_no'] ?? $row['identifier_scanned'] ?? '',
+                $row['class_name'] ?? '',
+                $row['scan_action'],
+                $row['status'],
+                $row['response_message'],
+                $row['sms_status'],
+                $row['email_status'],
+                $row['ip_address']
+            ]);
+        }
+        fclose($out);
+        exit;
     }
 }

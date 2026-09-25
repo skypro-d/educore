@@ -500,27 +500,27 @@ $fullName = trim($staff['first_name'] . ' ' . $staff['last_name']);
         }
 
         .id-qr-note {
-            font-size: 9px;
-            font-weight: 600;
-            color: #475569;
-            margin-bottom: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #334155;
+            margin-bottom: 8px;
             text-align: center;
         }
 
         .id-qr-box {
             background: #ffffff;
-            border-radius: 12px;
-            padding: 6px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 8px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+            border: 1.5px solid #e2e8f0;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
         .id-qr-box img {
-            width: 92px;
-            height: 92px;
+            width: 145px;
+            height: 145px;
             display: block;
         }
 
@@ -802,8 +802,8 @@ $fullName = trim($staff['first_name'] . ' ' . $staff['last_name']);
                          <?php if (!empty($hasQr)): ?>
                              <img src="<?= $qrSrc ?>" alt="Staff Attendance QR Code">
                          <?php else: ?>
-                             <div style="width:92px; height:92px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:9px; text-align:center; padding:4px;">
-                                 <i class="ti ti-qrcode" style="font-size:32px; color:#94a3b8; margin-bottom:2px;"></i>
+                             <div style="width:145px; height:145px; border:1px solid #cbd5e1; border-radius:12px; background:#f8fafc; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:11px; text-align:center; padding:8px;">
+                                 <i class="ti ti-qrcode" style="font-size:48px; color:#94a3b8; margin-bottom:4px;"></i>
                                  <span>QR READY</span>
                              </div>
                          <?php endif; ?>

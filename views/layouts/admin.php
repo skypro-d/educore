@@ -56,6 +56,8 @@
     <a class="nav-item <?= $current === 'attendance' ? 'active' : '' ?>" href="<?= url('admin/attendance') ?>"><i class="ti ti-calendar-check" data-fallback="At"></i> Daily Attendance</a>
     <a class="nav-item <?= $current === 'staff-attendance' || $current === 'staff-attendance-report' ? 'active' : '' ?>" href="<?= url('admin/staff-attendance') ?>"><i class="ti ti-clock-check" data-fallback="Sa"></i> Staff Attendance</a>
     <a class="nav-item <?= $current === 'attendance-scanner' ? 'active' : '' ?>" href="<?= url('admin/attendance-scanner') ?>"><i class="ti ti-qrcode" data-fallback="Sc"></i> Attendance Scanner</a>
+    <a class="nav-item <?= $current === 'scanner-assignments' ? 'active' : '' ?>" href="<?= url('admin/scanner-assignments') ?>"><i class="ti ti-scan" data-fallback="Sa"></i> Scanner Assignments</a>
+    <a class="nav-item <?= $current === 'scanner-logs' ? 'active' : '' ?>" href="<?= url('admin/scanner-logs') ?>"><i class="ti ti-history" data-fallback="Sl"></i> Scanner Activity Logs</a>
     <a class="nav-item <?= $current === 'attendance-report' ? 'active' : '' ?>" href="<?= url('admin/attendance-report') ?>"><i class="ti ti-file-analytics" data-fallback="Ar"></i> Attendance Report</a>
     <a class="nav-item <?= $current === 'attendance-settings' ? 'active' : '' ?>" href="<?= url('admin/attendance-settings') ?>"><i class="ti ti-settings-automation" data-fallback="As"></i> Attendance Settings</a>
     <a class="nav-item <?= $current === 'attendance-notification-logs' ? 'active' : '' ?>" href="<?= url('admin/attendance-notification-logs') ?>"><i class="ti ti-bell-ringing" data-fallback="Nl"></i> Notification Logs</a>

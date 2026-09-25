@@ -135,12 +135,124 @@ final class StaffAuth
     }
 
     /**
+     * Check if the authenticated staff member is primarily a Scanner Officer.
+     */
+    public static function isScannerOfficer(): bool
+    {
+        if (self::hasRole('scanner_officer')) {
+            return true;
+        }
+
+        $assignment = self::scannerAssignment();
+        if ($assignment !== null && !self::isSchoolAdmin() && !self::hasRole(['class_teacher', 'subject_teacher', 'head_teacher', 'vice_principal'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Get active scanner assignment for the current staff member.
+     */
+    public static function scannerAssignment(): ?array
+    {
+        $staffId = self::id();
+        if ($staffId <= 0) {
+            return null;
+        }
+
+        try {
+            $db = Database::connect();
+            $schoolId = SchoolContext::id() ?? 1;
+            $stmt = $db->prepare(
+                "SELECT sa.*, st.station_name, st.station_code, st.scanner_type, st.location AS station_location
+                 FROM scanner_assignments sa
+                 LEFT JOIN scanner_stations st ON st.id = sa.station_id
+                 WHERE sa.staff_id = ? AND sa.school_id = ? AND sa.status = 'active' AND sa.deleted_at IS NULL
+                 LIMIT 1"
+            );
+            $stmt->execute([$staffId, $schoolId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $row ?: null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Require scanner portal access.
+     * Enforces active scanner assignment & granular permissions.
+     *
+     * @return array The active assignment details.
+     */
+    public static function requireScannerAccess(): array
+    {
+        // Admin session bypass for super_admin / admin testing
+        if (admin() && (admin()['role'] ?? '') === 'superadmin') {
+            return [
+                'id' => 0,
+                'staff_id' => 0,
+                'station_id' => 1,
+                'station_name' => 'Admin Test Station',
+                'station_code' => 'ADMIN-TEST',
+                'can_scan_in' => 1,
+                'can_scan_out' => 1,
+                'can_view_today_logs' => 1,
+                'can_view_student_details' => 1,
+                'status' => 'active'
+            ];
+        }
+
+        if (!self::check()) {
+            redirect('teacher/login');
+        }
+
+        // Check forced password change
+        self::requireAuth(true);
+
+        // School-wide admin bypass
+        if (self::isSchoolAdmin()) {
+            return [
+                'id' => 0,
+                'staff_id' => self::id(),
+                'station_id' => 1,
+                'station_name' => 'All Stations (Admin)',
+                'station_code' => 'ADMIN-ALL',
+                'can_scan_in' => 1,
+                'can_scan_out' => 1,
+                'can_view_today_logs' => 1,
+                'can_view_student_details' => 1,
+                'status' => 'active'
+            ];
+        }
+
+        $assignment = self::scannerAssignment();
+        if (!$assignment) {
+            http_response_code(403);
+            if (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) {
+                header('Content-Type: application/json');
+                die(json_encode(['success' => false, 'message' => 'Access Denied: You do not have an active scanner station assignment.']));
+            }
+            flash('danger', 'Access Denied: You do not have an active scanner station assignment. Please contact your school administrator.');
+            redirect('teacher/login');
+        }
+
+        return $assignment;
+    }
+
+    /**
      * Ensure staff is authenticated and does not have a pending forced password change.
      */
-    public static function requireAuth(bool $checkPasswordForce = true): void
+    public static function requireAuth(bool $checkPasswordForce = true, bool $allowScannerOfficer = false): void
     {
         if (!self::check()) {
             redirect('teacher/login');
+        }
+
+        // Prevent Scanner Officers from accessing general teacher portal modules
+        if (!$allowScannerOfficer && self::isScannerOfficer()) {
+            flash('warning', 'Scanner Officers only have access to the Scanner Portal.');
+            redirect('scanner');
         }
 
         if ($checkPasswordForce) {

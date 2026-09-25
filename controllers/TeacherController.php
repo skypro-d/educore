@@ -116,6 +116,11 @@ final class TeacherController
                 }
 
                 flash('success', "Welcome back, {$account['first_name']}!");
+
+                if (StaffAuth::isScannerOfficer()) {
+                    redirect('scanner');
+                }
+
                 redirect('teacher/dashboard');
             }
         }
