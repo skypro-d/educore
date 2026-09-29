@@ -631,9 +631,9 @@ if (empty(trim((string)$idValidity))) {
 
     <?php
     require_once __DIR__ . '/../../services/QrCodeService.php';
-    $studentQr = QrCodeService::ensureStudentQr($student);
+    $forceRegen = !empty($_GET['regen']) || !empty($_GET['refresh']);
+    $studentQr = QrCodeService::ensureStudentQr($student, $forceRegen);
     $token = $studentQr['token'];
-    $siteScanUrl = $studentQr['scan_url'];
     $qrSrc = $studentQr['img_url'];
     $hasQr = $studentQr['has_qr'];
     ?>

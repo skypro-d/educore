@@ -286,6 +286,10 @@ switch ($route) {
     case 'attendance-scanner/recent':
         $attendance->recentScansAjax();
         break;
+    case 'attendance/regenerate-qrs':
+    case 'qrcodes/regenerate-all':
+        $controller->regenerateAllQrs();
+        break;
     case 'attendance-report':
         $attendance->report();
         break;

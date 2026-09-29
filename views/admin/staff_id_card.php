@@ -639,9 +639,9 @@ $fullName = trim($staff['first_name'] . ' ' . $staff['last_name']);
 
     <?php
     require_once __DIR__ . '/../../services/QrCodeService.php';
-    $staffQr = QrCodeService::ensureStaffQr($staff);
+    $forceRegen = !empty($_GET['regen']) || !empty($_GET['refresh']);
+    $staffQr = QrCodeService::ensureStaffQr($staff, $forceRegen);
     $token = $staffQr['token'];
-    $siteScanUrl = $staffQr['scan_url'];
     $qrSrc = $staffQr['img_url'];
     $hasQr = $staffQr['has_qr'];
     ?>

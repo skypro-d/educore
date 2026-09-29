@@ -20,28 +20,145 @@ final class QrCodeService
     public const DEFAULT_MARGIN = 4;   // 4 modules quiet zone (ISO/IEC standard)
 
     /**
+     * Resolve the public domain / host for attendance scan links.
+     * Prioritizes active HTTP_HOST on live servers, then APP_URL, then database configurations.
+     */
+    public static function resolvePublicHost(): string
+    {
+        $httpHost = !empty($_SERVER['HTTP_HOST']) ? strtolower(trim($_SERVER['HTTP_HOST'])) : '';
+        $httpHostNoPort = preg_replace('/:\d+$/', '', $httpHost);
+        $isLocalRequest = ($httpHostNoPort === 'localhost' || str_starts_with($httpHostNoPort, '127.') || $httpHostNoPort === '::1' || $httpHostNoPort === '[::1]');
+
+        // 1. If HTTP_HOST is present and is a public domain (live server HTTP request)
+        if ($httpHost !== '' && !$isLocalRequest) {
+            return $httpHost;
+        }
+
+        // 2. Check APP_URL from .env
+        $envAppUrl = getEnvConfig('APP_URL');
+        if ($envAppUrl !== '') {
+            $parsed = parse_url($envAppUrl);
+            if (!empty($parsed['host'])) {
+                $h = $parsed['host'] . (!empty($parsed['port']) && $parsed['port'] !== 80 && $parsed['port'] !== 443 ? ':' . $parsed['port'] : '');
+                $hNoPort = preg_replace('/:\d+$/', '', $h);
+                if ($hNoPort !== 'localhost' && !str_starts_with($hNoPort, '127.')) {
+                    return $h;
+                }
+            }
+        }
+
+        // 3. Check school_settings table: explicit school_domain (not default localhost)
+        $dbDomain = trim((string) setting('school_domain', setting('domain', '')));
+        if ($dbDomain !== '' && $dbDomain !== 'localhost' && !str_starts_with($dbDomain, '127.')) {
+            $dbDomain = preg_replace('#^https?://#i', '', $dbDomain);
+            $dbDomain = preg_replace('#/.*$#', '', $dbDomain);
+            if ($dbDomain !== '') {
+                return $dbDomain;
+            }
+        }
+
+        // 4. If we are running in CLI / background (no HTTP_HOST) and school has a website
+        if ($httpHost === '') {
+            $dbWebsite = trim((string) setting('school_website', setting('website', '')));
+            if ($dbWebsite !== '' && !str_contains($dbWebsite, 'localhost') && !str_contains($dbWebsite, '127.0.0.1')) {
+                $parsed = parse_url($dbWebsite);
+                if (!empty($parsed['host']) && $parsed['host'] !== 'localhost' && !str_starts_with($parsed['host'], '127.')) {
+                    return $parsed['host'];
+                }
+            }
+        }
+
+        // 5. Fallback: whatever HTTP_HOST is or 'localhost'
+        return $httpHost !== '' ? $httpHost : 'localhost';
+    }
+
+    /**
+     * Resolve the protocol scheme (https vs http).
+     * Defaults to https for any non-localhost host or behind SSL reverse proxies.
+     */
+    public static function resolvePublicScheme(string $host): string
+    {
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+            return 'https';
+        }
+        if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+            return 'https';
+        }
+        if (!empty($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on') {
+            return 'https';
+        }
+        if (!empty($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
+            return 'https';
+        }
+
+        // Check if APP_URL explicitly specifies http://
+        $envAppUrl = getEnvConfig('APP_URL');
+        if ($envAppUrl !== '' && str_starts_with($envAppUrl, 'http://')) {
+            return 'http';
+        }
+
+        // If host is a public domain (not localhost/127.0.0.1), modern live sites use HTTPS
+        $hNoPort = preg_replace('/:\d+$/', '', $host);
+        if ($hNoPort !== 'localhost' && !str_starts_with($hNoPort, '127.') && $hNoPort !== '::1' && $hNoPort !== '[::1]') {
+            return 'https';
+        }
+
+        return 'http';
+    }
+
+    /**
+     * Resolve the base URL path (e.g. '' on root domains or '/EduCore' in subdirectories).
+     */
+    public static function resolvePublicBaseUrl(string $host): string
+    {
+        $envAppUrl = getEnvConfig('APP_URL');
+        if ($envAppUrl !== '') {
+            $path = parse_url($envAppUrl, PHP_URL_PATH);
+            if ($path !== null && $path !== '/' && $path !== '') {
+                return rtrim($path, '/');
+            }
+        }
+
+        $baseUrl = defined('BASE_URL') ? BASE_URL : '';
+        $hNoPort = preg_replace('/:\d+$/', '', $host);
+        $isLocal = ($hNoPort === 'localhost' || str_starts_with($hNoPort, '127.') || $hNoPort === '::1' || $hNoPort === '[::1]');
+
+        if ($isLocal) {
+            if ($baseUrl === '') {
+                $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+                return str_contains($scriptName, '/EduCore') ? '/EduCore' : '';
+            }
+            return $baseUrl;
+        }
+
+        // On a live server root domain: if BASE_URL is literally '/EduCore' but script is not in '/EduCore', strip it
+        $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+        if ($baseUrl === '/EduCore' && !str_contains($scriptName, '/EduCore/')) {
+            return '';
+        }
+
+        return $baseUrl;
+    }
+
+    /**
+     * Sanitized filesystem-safe identifier for current host.
+     */
+    public static function getSafeHost(): string
+    {
+        $host = self::resolvePublicHost();
+        return preg_replace('/[^a-zA-Z0-9_-]/', '_', strtolower($host));
+    }
+
+    /**
      * Build the full attendance verification URL for a given token.
      */
     public static function buildScanUrl(string $token): string
     {
         $token = trim($token);
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        
-        // Check if school has a public domain/URL configured
-        $configuredDomain = trim((string) setting('school_domain', setting('domain', '')));
-        if ($configuredDomain !== '' && $configuredDomain !== 'localhost' && !str_starts_with($configuredDomain, '127.')) {
-            $configuredDomain = preg_replace('#^https?://#', '', $configuredDomain);
-            $configuredDomain = preg_replace('#/.*$#', '', $configuredDomain);
-            if ($configuredDomain !== '') {
-                $host = $configuredDomain;
-            }
-        }
+        $host = self::resolvePublicHost();
+        $scheme = self::resolvePublicScheme($host);
+        $baseUrl = self::resolvePublicBaseUrl($host);
 
-        $baseUrl = defined('BASE_URL') ? BASE_URL : '';
-        if ($baseUrl === '' && ($host === 'localhost' || str_starts_with($host, '127.'))) {
-            $baseUrl = '/EduCore';
-        }
         return $scheme . '://' . $host . $baseUrl . '/?route=attendance/scan&token=' . urlencode($token);
     }
 
@@ -109,23 +226,8 @@ final class QrCodeService
 
     /**
      * Ensure a student has a valid unique attendance QR token and high-res image file.
-     * Automatically self-heals missing tokens and missing image files.
-     *
-     * @param array<string, mixed>|int $studentOrId
-     * @return array{
-     *     id: int,
-     *     token: string,
-     *     relative_path: string,
-     *     full_path: string,
-     *     img_url: string,
-     *     scan_url: string,
-     *     has_qr: bool
-     * }
-     */
-    /**
-     * Ensure a student has a valid unique attendance QR token and high-res image file.
-     * Generates machine-optimized QR code encoding the direct attendance token for instant
-     * 2D scanner / hardware terminal decoding, along with a web URL QR variant.
+     * The primary QR code encodes ONLY the attendance token / number (e.g. ATTENDANCE-STD-QR-6ab57787b15d4)
+     * without any URL prefix, ensuring instant 2D hardware scanning and clean phone camera decoding.
      *
      * @param array<string, mixed>|int $studentOrId
      * @param bool $forceRegen
@@ -136,6 +238,7 @@ final class QrCodeService
      *     full_path: string,
      *     img_url: string,
      *     url_img_url: string,
+     *     token_img_url: string,
      *     scan_url: string,
      *     has_qr: bool
      * }
@@ -160,7 +263,7 @@ final class QrCodeService
             }
         }
 
-        // 1. Ensure token exists
+        // 1. Ensure token exists (pure attendance identifier / number)
         $token = trim((string) ($student['qr_data'] ?? ''));
         if ($token === '') {
             $salt = substr(md5(($student['admission_number'] ?? '') . '_' . $studentId . '_' . uniqid()), 0, 8);
@@ -169,36 +272,46 @@ final class QrCodeService
             $student['qr_data'] = $token;
         }
 
-        // 2. Determine file paths
+        // 2. Primary QR code encodes ONLY the token/number (no URL, high DPI, instant read)
         $qrRelative = 'qrcodes/std_' . $studentId . '.png';
         $qrFullPath = UPLOAD_PATH . $qrRelative;
-        $qrUrlRelative = 'qrcodes/std_url_' . $studentId . '.png';
-        $qrUrlFullPath = UPLOAD_PATH . $qrUrlRelative;
-        $scanUrl = self::buildScanUrl($token);
 
-        // 3. Generate machine-optimized token QR (direct token payload: large modules, instant hardware scanner read)
-        $needsRegen = $forceRegen || !file_exists($qrFullPath) || filesize($qrFullPath) < 100;
+        // Secondary URL QR variant
+        $scanUrl = self::buildScanUrl($token);
+        $urlRelative = 'qrcodes/std_url_' . $studentId . '.png';
+        $urlFullPath = UPLOAD_PATH . $urlRelative;
+
+        // Regenerate if forceRegen or if file is missing/empty
+        $needsRegen = $forceRegen 
+            || !file_exists($qrFullPath) 
+            || filesize($qrFullPath) < 100;
+
         if ($needsRegen) {
+            // Primary QR encodes ONLY the pure token number (e.g. ATTENDANCE-STD-QR-6ab57787b15d4)
             self::generatePng($token, $qrFullPath, self::DEFAULT_LEVEL, self::DEFAULT_SIZE, self::DEFAULT_MARGIN);
-            self::generatePng($scanUrl, $qrUrlFullPath, self::DEFAULT_LEVEL, 6, self::DEFAULT_MARGIN);
+            // Secondary URL variant
+            self::generatePng($scanUrl, $urlFullPath, self::DEFAULT_LEVEL, 6, self::DEFAULT_MARGIN);
+            
+            // Record in database
             $pdo->prepare("UPDATE applicants SET qr_code = ? WHERE id = ?")->execute([$qrRelative, $studentId]);
             $student['qr_code'] = $qrRelative;
-        } elseif (empty($student['qr_code'])) {
+        } elseif (empty($student['qr_code']) || $student['qr_code'] !== $qrRelative) {
             $pdo->prepare("UPDATE applicants SET qr_code = ? WHERE id = ?")->execute([$qrRelative, $studentId]);
             $student['qr_code'] = $qrRelative;
         }
 
-        $hasQr = file_exists($qrFullPath) && filesize($qrFullPath) > 0;
         $imgUrl = url('uploads/' . $qrRelative);
-        $urlImgUrl = url('uploads/' . $qrUrlRelative);
+        $urlImgUrl = url('uploads/' . $urlRelative);
+        $hasQr = file_exists($qrFullPath) && filesize($qrFullPath) > 0;
 
         return [
             'id'            => $studentId,
             'token'         => $token,
             'relative_path' => $qrRelative,
             'full_path'     => $qrFullPath,
-            'img_url'       => $imgUrl,
-            'url_img_url'   => $urlImgUrl,
+            'img_url'       => $imgUrl,       // Pure token/number QR code for ID cards and profiles
+            'url_img_url'   => $urlImgUrl,   // URL variant
+            'token_img_url' => $imgUrl,       // Pure token/number QR code
             'scan_url'      => $scanUrl,
             'has_qr'        => $hasQr,
         ];
@@ -206,7 +319,8 @@ final class QrCodeService
 
     /**
      * Ensure a staff member has a valid unique attendance QR token and high-res image file.
-     * Automatically self-heals missing tokens and missing image files.
+     * The primary QR code encodes ONLY the attendance token / number (e.g. ATTENDANCE-STF-9-...)
+     * without any URL prefix.
      *
      * @param array<string, mixed>|int $staffOrId
      * @param bool $forceRegen
@@ -217,6 +331,7 @@ final class QrCodeService
      *     full_path: string,
      *     img_url: string,
      *     url_img_url: string,
+     *     token_img_url: string,
      *     scan_url: string,
      *     has_qr: bool
      * }
@@ -240,7 +355,7 @@ final class QrCodeService
             }
         }
 
-        // 1. Ensure token exists
+        // 1. Ensure token exists (pure attendance identifier / number)
         $token = trim((string) ($staff['qr_data'] ?? ''));
         if ($token === '') {
             $salt = substr(md5(($staff['staff_id'] ?? '') . '_' . $staffId . '_' . uniqid()), 0, 8);
@@ -249,31 +364,37 @@ final class QrCodeService
             $staff['qr_data'] = $token;
         }
 
-        // 2. Determine file paths
+        // 2. Primary QR code encodes ONLY the token/number (no URL)
         $qrRelative = 'qrcodes/stf_' . $staffId . '.png';
         $qrFullPath = UPLOAD_PATH . $qrRelative;
-        $qrUrlRelative = 'qrcodes/stf_url_' . $staffId . '.png';
-        $qrUrlFullPath = UPLOAD_PATH . $qrUrlRelative;
-        $scanUrl = self::buildScanUrl($token);
 
-        // 3. Generate machine-optimized token QR
-        $needsRegen = $forceRegen || !file_exists($qrFullPath) || filesize($qrFullPath) < 100;
+        // Secondary URL QR variant
+        $scanUrl = self::buildScanUrl($token);
+        $urlRelative = 'qrcodes/stf_url_' . $staffId . '.png';
+        $urlFullPath = UPLOAD_PATH . $urlRelative;
+
+        $needsRegen = $forceRegen 
+            || !file_exists($qrFullPath) 
+            || filesize($qrFullPath) < 100;
+
         if ($needsRegen) {
+            // Encode ONLY the pure token number
             self::generatePng($token, $qrFullPath, self::DEFAULT_LEVEL, self::DEFAULT_SIZE, self::DEFAULT_MARGIN);
-            self::generatePng($scanUrl, $qrUrlFullPath, self::DEFAULT_LEVEL, 6, self::DEFAULT_MARGIN);
+            self::generatePng($scanUrl, $urlFullPath, self::DEFAULT_LEVEL, 6, self::DEFAULT_MARGIN);
         }
 
-        $hasQr = file_exists($qrFullPath) && filesize($qrFullPath) > 0;
         $imgUrl = url('uploads/' . $qrRelative);
-        $urlImgUrl = url('uploads/' . $qrUrlRelative);
+        $urlImgUrl = url('uploads/' . $urlRelative);
+        $hasQr = file_exists($qrFullPath) && filesize($qrFullPath) > 0;
 
         return [
             'id'            => $staffId,
             'token'         => $token,
             'relative_path' => $qrRelative,
             'full_path'     => $qrFullPath,
-            'img_url'       => $imgUrl,
-            'url_img_url'   => $urlImgUrl,
+            'img_url'       => $imgUrl,       // Pure token/number QR code
+            'url_img_url'   => $urlImgUrl,   // URL variant
+            'token_img_url' => $imgUrl,       // Pure token/number QR code
             'scan_url'      => $scanUrl,
             'has_qr'        => $hasQr,
         ];
@@ -281,9 +402,9 @@ final class QrCodeService
 
     /**
      * Batch repair/regenerate all enrolled students and active staff with high-contrast,
-     * machine-optimized QR codes and tokens.
+     * machine-optimized QR codes encoding ONLY the attendance token/number.
      *
-     * @param bool $forceRegen Set to true to regenerate all existing files with machine-optimized format.
+     * @param bool $forceRegen Set to true to regenerate all existing files.
      * @return array{students_fixed: int, staff_fixed: int}
      */
     public static function repairAllMissing(bool $forceRegen = false): array
@@ -295,8 +416,8 @@ final class QrCodeService
         // 1. Students (Enrolled or Active)
         $stmt = $pdo->query("SELECT id, admission_number, application_number, first_name, last_name, qr_code, qr_data FROM applicants WHERE status = 'Enrolled' OR student_status = 'Active'");
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $qrPath = !empty($row['qr_code']) ? UPLOAD_PATH . $row['qr_code'] : '';
-            if ($forceRegen || empty($row['qr_data']) || empty($row['qr_code']) || !file_exists($qrPath) || filesize($qrPath) < 100) {
+            $qrPath = UPLOAD_PATH . 'qrcodes/std_' . $row['id'] . '.png';
+            if ($forceRegen || empty($row['qr_data']) || !file_exists($qrPath) || filesize($qrPath) < 100) {
                 self::ensureStudentQr($row, $forceRegen);
                 $studentsFixed++;
             }

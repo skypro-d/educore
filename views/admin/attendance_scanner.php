@@ -29,6 +29,9 @@ $pageTitle = 'Attendance Scanner Terminal';
         <button type="button" class="btn btn-primary btn-sm rounded-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#testQrModal">
             <i class="ti ti-qrcode me-1"></i> Scan Test Student / Staff QR
         </button>
+        <a href="<?= url('admin/attendance/regenerate-qrs') ?>" class="btn btn-outline-secondary btn-sm rounded-3 shadow-sm" title="Refresh QR codes for current live domain" onclick="return confirm('Regenerate all student and staff attendance QR codes for the current live domain?');">
+            <i class="ti ti-refresh me-1"></i> Refresh Live QRs
+        </a>
         <a href="<?= url('admin/attendance') ?>" class="btn btn-outline-primary btn-sm rounded-3 shadow-sm">
             <i class="ti ti-table me-1"></i> Daily Sheet
         </a>

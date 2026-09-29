@@ -2398,6 +2398,26 @@ final class AdminController
         exit;
     }
 
+    public function regenerateAllQrs(): void
+    {
+        require_admin();
+        require_once __DIR__ . '/../services/QrCodeService.php';
+        $res = QrCodeService::repairAllMissing(true);
+        $host = QrCodeService::resolvePublicHost();
+        if (isset($_GET['ajax']) || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => true,
+                'message' => "Successfully regenerated live QR codes for {$res['students_fixed']} students and {$res['staff_fixed']} staff members (Domain: {$host}).",
+                'details' => $res,
+                'host' => $host
+            ]);
+            exit;
+        }
+        flash('success', "Successfully refreshed attendance QR codes for {$res['students_fixed']} students and {$res['staff_fixed']} staff members on domain: {$host}.");
+        redirect('admin/attendance-scanner');
+    }
+
     /* ─── Staff Attendance Management ─────────────────────────────── */
 
     public function staffAttendance(): void
