@@ -546,7 +546,7 @@ if (scanInputEl) {
 
     scanInputEl.addEventListener('input', function() {
         clearTimeout(usbBurstTimeout);
-        // If scanner dumps without Enter key, auto-dispatch after 120ms idle
+        // If scanner dumps without Enter key, auto-dispatch after 250ms idle
         usbBurstTimeout = setTimeout(() => {
             const val = scanInputEl.value.trim();
             if (val.length >= 4) {
@@ -554,7 +554,7 @@ if (scanInputEl) {
                 usbBuffer = '';
                 processIncomingBarcode(val);
             }
-        }, 120);
+        }, 250);
     });
 }
 
@@ -567,7 +567,7 @@ window.addEventListener('keydown', function(e) {
 
     const now = Date.now();
     // USB HID scanners dump characters within 10-35ms intervals
-    if (now - lastKeyTime > 350) {
+    if (now - lastKeyTime > 400) {
         usbBuffer = '';
     }
     lastKeyTime = now;
@@ -592,7 +592,7 @@ window.addEventListener('keydown', function(e) {
                 usbBuffer = '';
                 processIncomingBarcode(scannedCode);
             }
-        }, 130);
+        }, 250);
     }
 });
 

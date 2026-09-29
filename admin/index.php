@@ -39,6 +39,10 @@ if (preg_match('#^applications/(\d+)/id-card$#', $route, $m)) {
     $controller->idCard((int) $m[1]);
     exit;
 }
+if (preg_match('#^(?:applications|students)/(\d+)/qr$#', $route, $m)) {
+    $controller->studentQrAjax((int) $m[1]);
+    exit;
+}
 if (preg_match('#^applications/(\d+)/(approve|reject|terminate)$#', $route, $m)) {
     $statusMap = ['approve' => 'Approved', 'reject' => 'Rejected', 'terminate' => 'Terminated'];
     $controller->updateStatus((int) $m[1], $statusMap[$m[2]]);
@@ -108,6 +112,10 @@ if (preg_match('#^staff/(\d+)/activity$#', $route, $m)) {
 }
 if (preg_match('#^staff/(\d+)/id-card$#', $route, $m)) {
     $controller->staffIdCard((int) $m[1]);
+    exit;
+}
+if (preg_match('#^staff/(\d+)/qr$#', $route, $m)) {
+    $controller->staffQrAjax((int) $m[1]);
     exit;
 }
 if (preg_match('#^staff/(\d+)/students$#', $route, $m)) {

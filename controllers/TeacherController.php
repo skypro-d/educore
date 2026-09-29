@@ -687,27 +687,36 @@ final class TeacherController
         }
         $token = trim($token);
 
-        if (!str_starts_with($token, 'ATTENDANCE-STD-')) {
-            echo json_encode(['success' => false, 'message' => 'Invalid QR code signature. Not an EduCore student ID code.']);
-            exit;
+        $normalizedToken = str_replace('/', '-', $token);
+        $studentId = 0;
+        if (preg_match('/attendance[-_\/]std[-_\/](\d+)/i', $token, $m)) {
+            $studentId = (int) $m[1];
+        } elseif (str_starts_with($token, 'ATTENDANCE-STD-')) {
+            $parts = explode('-', $token);
+            if (isset($parts[2]) && ctype_digit($parts[2])) {
+                $studentId = (int) $parts[2];
+            }
         }
 
-        $parts = explode('-', $token);
-        $studentId = isset($parts[2]) ? (int) $parts[2] : 0;
-
-        if ($studentId <= 0) {
-            echo json_encode(['success' => false, 'message' => 'Invalid student identifier in QR code.']);
-            exit;
-        }
-
+        // Locate student by qr_data, normalized token, admission number, or numeric ID
         $stmtStud = $this->db->prepare(
             "SELECT a.id, a.first_name, a.last_name, a.class_id, a.status, a.student_status, a.qr_data, c.name AS class_name
              FROM applicants a
              LEFT JOIN classes c ON c.id = a.class_id
-             WHERE a.id = ? LIMIT 1"
+             WHERE (a.qr_data = ? OR a.qr_data = ? OR a.admission_number = ? OR a.application_number = ?" . ($studentId > 0 ? " OR a.id = ?" : "") . ")
+             LIMIT 1"
         );
-        $stmtStud->execute([$studentId]);
+        $params = [$token, $normalizedToken, $token, $token];
+        if ($studentId > 0) {
+            $params[] = $studentId;
+        }
+        $stmtStud->execute($params);
         $student = $stmtStud->fetch(PDO::FETCH_ASSOC);
+
+        if (!$student) {
+            echo json_encode(['success' => false, 'message' => 'Unrecognized student QR code or token.']);
+            exit;
+        }
 
         if (!$student || $student['status'] !== 'Enrolled' || $student['student_status'] !== 'Active') {
             echo json_encode(['success' => false, 'message' => 'Student is not currently an active enrolled student.']);

@@ -181,6 +181,11 @@
                                             <i class="ti ti-id-badge-2 me-2"></i> Print Official ID Card
                                         </a>
                                     </li>
+                                    <li>
+                                        <a class="dropdown-item" href="javascript:void(0)" onclick="openStaffQrModal(<?= $s['id'] ?>, '<?= e(addslashes($s['first_name'] . ' ' . $s['last_name'])) ?>', '<?= e($s['staff_id']) ?>', '<?= e(addslashes($s['role_title'] ? ucwords(str_replace('_', ' ', $s['role_title'])) : $s['role'])) ?>')">
+                                            <i class="ti ti-qrcode text-primary me-2"></i> View &amp; Scan Attendance QR
+                                        </a>
+                                    </li>
                                     <li><hr class="dropdown-divider"></li>
                                     <li>
                                         <a class="dropdown-item" href="javascript:void(0)" onclick='openEditStaffModal(<?= json_encode($s, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)'>
@@ -805,4 +810,104 @@ document.getElementById('staffSearchInput').addEventListener('input', function()
         r.style.display = text.includes(term) ? '' : 'none';
     });
 });
+
+let currentStaffQrModalId = 0;
+function openStaffQrModal(staffId, staffName, staffCode, roleName) {
+    currentStaffQrModalId = staffId;
+    document.getElementById('staffQrModalName').innerText = staffName;
+    document.getElementById('staffQrModalRole').innerText = roleName;
+    document.getElementById('staffQrModalIdCode').innerText = staffCode;
+    document.getElementById('staffQrModalImg').src = '<?= url("uploads/qrcodes/stf_") ?>' + staffId + '.png';
+    document.getElementById('staffQrModalToken').innerText = 'Loading token...';
+    document.getElementById('staffQrModalPrintBtn').href = '<?= url("admin/staff/") ?>' + staffId + '/id-card';
+
+    const modal = new bootstrap.Modal(document.getElementById('staffQrModal'));
+    modal.show();
+
+    fetch('<?= url("admin/staff/") ?>' + staffId + '/qr')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.qr) {
+                document.getElementById('staffQrModalImg').src = data.qr.img_url;
+                document.getElementById('staffQrModalToken').innerText = data.qr.token;
+                document.getElementById('staffQrModalDownloadBtn').href = data.qr.img_url;
+                document.getElementById('staffQrModalDownloadBtn').download = 'Staff_QR_' + staffCode + '.png';
+            } else {
+                document.getElementById('staffQrModalToken').innerText = 'Error generating QR token.';
+            }
+        })
+        .catch(err => {
+            document.getElementById('staffQrModalToken').innerText = 'Network error loading QR.';
+        });
+}
+
+function copyStaffQrToken() {
+    const token = document.getElementById('staffQrModalToken').innerText.trim();
+    if (token && token !== 'Loading token...') {
+        navigator.clipboard.writeText(token).then(() => {
+            const btn = document.getElementById('copyStaffTokenBtn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="ti ti-check me-1"></i> Copied!';
+            btn.classList.replace('btn-outline-secondary', 'btn-success');
+            setTimeout(() => {
+                btn.innerHTML = orig;
+                btn.classList.replace('btn-success', 'btn-outline-secondary');
+            }, 2000);
+        });
+    }
+}
 </script>
+
+<!-- Modal: Staff Attendance QR Code & Scan Terminal -->
+<div class="modal fade" id="staffQrModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:18px; overflow:hidden;">
+            <div class="modal-header border-0 pb-0 pt-4 px-4">
+                <div>
+                    <h5 class="modal-title fw-bold text-dark mb-0">
+                        <i class="ti ti-qrcode text-primary me-2"></i> Staff Attendance QR Code
+                    </h5>
+                    <p class="text-muted small mb-0">High-resolution QR code for camera &amp; USB kiosk scanning</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <div class="d-inline-block bg-white p-3 border rounded-4 shadow-sm mb-3" style="border-color:#cbd5e1 !important;">
+                    <img id="staffQrModalImg" src="" alt="Staff QR Code" style="width:250px; height:250px; display:block; image-rendering:-webkit-optimize-contrast; image-rendering:pixelated; margin:0 auto;">
+                </div>
+                <h5 class="fw-bold text-dark mb-1" id="staffQrModalName">Staff Name</h5>
+                <div class="d-flex align-items-center justify-content-center gap-2 mb-3">
+                    <span class="badge bg-primary text-white" id="staffQrModalRole">Role</span>
+                    <span class="badge bg-light text-secondary border font-monospace" id="staffQrModalIdCode">STF-0000</span>
+                </div>
+                <div class="p-3 bg-light rounded-3 text-start mb-3 border">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="text-muted small">Scanner Token:</span>
+                        <button type="button" id="copyStaffTokenBtn" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="copyStaffQrToken()">
+                            <i class="ti ti-copy me-1"></i> Copy
+                        </button>
+                    </div>
+                    <div class="font-monospace text-dark fw-bold small" id="staffQrModalToken" style="word-break:break-all;">
+                        Loading...
+                    </div>
+                </div>
+                <p class="text-muted small mb-0">
+                    <i class="ti ti-info-circle me-1 text-primary"></i> Point any smartphone camera, USB scanner, or gate kiosk at this code.
+                </p>
+            </div>
+            <div class="modal-footer border-0 bg-light p-3 d-flex justify-content-between">
+                <a id="staffQrModalDownloadBtn" href="#" class="btn btn-sm btn-outline-secondary">
+                    <i class="ti ti-download me-1"></i> Save Image
+                </a>
+                <div class="d-flex gap-2">
+                    <a href="<?= url('admin/attendance-scanner') ?>" target="_blank" class="btn btn-sm btn-light border">
+                        <i class="ti ti-external-link me-1"></i> Scanner Terminal
+                    </a>
+                    <a id="staffQrModalPrintBtn" href="#" target="_blank" class="btn btn-sm btn-primary">
+                        <i class="ti ti-printer me-1"></i> Print Official ID Card
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

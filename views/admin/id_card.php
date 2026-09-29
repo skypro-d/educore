@@ -501,8 +501,8 @@ if (empty(trim((string)$idValidity))) {
 
         .id-qr-box {
             background: #ffffff;
-            border-radius: 14px;
-            padding: 8px;
+            border-radius: 12px;
+            padding: 10px;
             box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
             border: 1.5px solid #e2e8f0;
             display: flex;
@@ -511,9 +511,11 @@ if (empty(trim((string)$idValidity))) {
         }
 
         .id-qr-box img {
-            width: 145px;
-            height: 145px;
+            width: 140px;
+            height: 140px;
             display: block;
+            background: #ffffff;
+            image-rendering: auto;
         }
 
         .id-sig-section {
@@ -628,39 +630,12 @@ if (empty(trim((string)$idValidity))) {
     </div>
 
     <?php
-    // QR Code Website Link Generation
-    $token = !empty($student['qr_data']) ? $student['qr_data'] : 'ATTENDANCE-STD-' . $student['id'];
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $baseUrl = defined('BASE_URL') ? BASE_URL : '';
-    $siteScanUrl = $scheme . '://' . $host . $baseUrl . '/?route=attendance/scan&token=' . urlencode($token);
-
-    $qrLocalDir  = UPLOAD_PATH . 'qrcodes/';
-    $safeHost    = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host);
-    $qrFileName  = 'std_url_' . $student['id'] . '_' . $safeHost . '.png';
-    $qrLocalFile = $qrLocalDir . $qrFileName;
-    $qrSrc       = url('uploads/qrcodes/' . $qrFileName);
-    $hasQr       = false;
-
-    try {
-        if (!is_dir($qrLocalDir)) {
-            @mkdir($qrLocalDir, 0755, true);
-        }
-        if (extension_loaded('gd') && function_exists('imagecreate')) {
-            require_once __DIR__ . '/../../config/phpqrcode.php';
-            @QRcode::png($siteScanUrl, $qrLocalFile, 'L', 6, 2);
-            if (file_exists($qrLocalFile)) {
-                $hasQr = true;
-            }
-        }
-    } catch (Throwable $e) {
-        error_log("Failed to generate site link QR code for student " . $student['id'] . ": " . $e->getMessage());
-    }
-
-    if (!$hasQr) {
-        $qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' . urlencode($siteScanUrl);
-        $hasQr = true;
-    }
+    require_once __DIR__ . '/../../services/QrCodeService.php';
+    $studentQr = QrCodeService::ensureStudentQr($student);
+    $token = $studentQr['token'];
+    $siteScanUrl = $studentQr['scan_url'];
+    $qrSrc = $studentQr['img_url'];
+    $hasQr = $studentQr['has_qr'];
     ?>
 
     <div class="id-card-wrapper">
@@ -792,7 +767,7 @@ if (empty(trim((string)$idValidity))) {
                     <div class="id-qr-note">Scan the QR code to sign in your attendance</div>
                     <div class="id-qr-box">
                          <?php if (!empty($hasQr)): ?>
-                             <img src="<?= $qrSrc ?>" alt="Attendance QR Code Website Link">
+                             <img src="<?= e($qrSrc) ?>" alt="Attendance QR Code Website Link">
                          <?php else: ?>
                              <div style="width:145px; height:145px; border:1px solid #cbd5e1; border-radius:12px; background:#f8fafc; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; font-size:11px; text-align:center; padding:8px;">
                                  <i class="ti ti-qrcode" style="font-size:48px; color:#94a3b8; margin-bottom:4px;"></i>
@@ -800,6 +775,7 @@ if (empty(trim((string)$idValidity))) {
                              </div>
                          <?php endif; ?>
                     </div>
+                    <div style="font-family: monospace; font-size: 8.5px; font-weight: 700; color: #64748b; margin-top: 5px; letter-spacing: 0.5px; text-align: center;"><?= e($token) ?></div>
                 </div>
 
                 <div class="id-sig-section">

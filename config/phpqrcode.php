@@ -3239,6 +3239,7 @@
     
     //##########################################################################    
     
+    #[\AllowDynamicProperties]
     class QRencode {
     
         public $casesensitive = true;
@@ -3249,6 +3250,7 @@
         public $margin = 4;
         public $back_color = 0xFFFFFF;
         public $fore_color = 0x000000;
+        public $cmyk = false;
         
         public $structured = 0; // not supported yet
         

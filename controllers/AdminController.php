@@ -769,35 +769,16 @@ final class AdminController
             $parentPass = generate_temp_password();
             $parentHash = password_hash($parentPass, PASSWORD_BCRYPT);
 
-            // 5. Generate QR code offline (safe, doesn't crash if GD or permissions missing)
-            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $qrToken = 'ATTENDANCE-STD-' . $applicantId . '-' . bin2hex(random_bytes(4));
-            $schoolDomain = trim((string) ($schoolInfo['domain'] ?? ''));
-            $portalHost = ($schoolDomain !== '' && $schoolDomain !== 'localhost') ? preg_replace('#^https?://#', '', $schoolDomain) : $host;
-            $portalHost = preg_replace('#/.*$#', '', $portalHost);
-            $qrData = $scheme . '://' . $portalHost . BASE_URL . '/?route=attendance/scan&token=' . urlencode($qrToken);
-            $qrPath = 'qrcodes/std_' . $applicantId . '.png';
-            $qrFullDir = UPLOAD_PATH . 'qrcodes/';
-
-            $qrGenerated = false;
-            if (extension_loaded('gd')) {
-                try {
-                    if (!is_dir($qrFullDir)) {
-                        @mkdir($qrFullDir, 0755, true);
-                    }
-                    if (is_writable($qrFullDir) || is_writable(UPLOAD_PATH)) {
-                        require_once __DIR__ . '/../config/phpqrcode.php';
-                        @QRcode::png($qrData, $qrFullDir . 'std_' . $applicantId . '.png', 'L', 6, 2);
-                        $qrGenerated = true;
-                    }
-                } catch (Throwable $qre) {
-                    error_log("Offline QR generation failed: " . $qre->getMessage());
-                }
-            }
-            if (!$qrGenerated) {
-                $qrPath = null;
-            }
+            // 5. Generate high-resolution, scannable QR code via QrCodeService
+            require_once __DIR__ . '/../services/QrCodeService.php';
+            $qrResult = QrCodeService::ensureStudentQr([
+                'id' => $applicantId,
+                'admission_number' => $admissionNumber,
+                'first_name' => $applicant['first_name'] ?? '',
+                'last_name' => $applicant['last_name'] ?? '',
+            ]);
+            $qrPath = $qrResult['relative_path'];
+            $qrToken = $qrResult['token'];
 
             // 6. Update applicant record (Write short token qrToken to database)
             $stmtUpd = $this->db->prepare(
@@ -2352,6 +2333,69 @@ final class AdminController
         }
 
         render('admin/staff_id_card', compact('staff'), 'auth');
+    }
+
+    public function staffQrAjax(int $id): void
+    {
+        require_admin();
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            require_once __DIR__ . '/../services/QrCodeService.php';
+            $stmt = $this->db->prepare("SELECT s.*, r.name AS role_title FROM staff s LEFT JOIN roles r ON r.id = s.role_id WHERE s.id = ? LIMIT 1");
+            $stmt->execute([$id]);
+            $staff = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$staff) {
+                echo json_encode(['success' => false, 'message' => 'Staff member not found.']);
+                exit;
+            }
+            $qr = QrCodeService::ensureStaffQr($staff);
+            echo json_encode([
+                'success' => true,
+                'staff' => [
+                    'id' => (int) $staff['id'],
+                    'name' => trim($staff['first_name'] . ' ' . $staff['last_name']),
+                    'staff_id' => $staff['staff_id'],
+                    'role' => $staff['role_title'] ?: $staff['role'],
+                    'department' => $staff['department'] ?: 'Academics',
+                    'photo' => !empty($staff['passport_photo']) ? url('uploads/' . $staff['passport_photo']) : null,
+                ],
+                'qr' => $qr
+            ]);
+        } catch (Throwable $e) {
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    public function studentQrAjax(int $id): void
+    {
+        require_admin();
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            require_once __DIR__ . '/../services/QrCodeService.php';
+            $qr = QrCodeService::ensureStudentQr($id);
+            $stmt = $this->db->prepare("SELECT a.*, c.name AS class_name FROM applicants a LEFT JOIN classes c ON c.id = a.class_id WHERE a.id = ? LIMIT 1");
+            $stmt->execute([$id]);
+            $student = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$student) {
+                echo json_encode(['success' => false, 'message' => 'Student not found.']);
+                exit;
+            }
+            echo json_encode([
+                'success' => true,
+                'student' => [
+                    'id' => (int) $student['id'],
+                    'name' => trim($student['first_name'] . ' ' . $student['last_name']),
+                    'admission_number' => $student['admission_number'] ?: $student['application_number'],
+                    'class_name' => $student['class_name'] ?: 'Enrolled Student',
+                    'photo' => !empty($student['passport_photo']) ? url('uploads/' . $student['passport_photo']) : null,
+                ],
+                'qr' => $qr
+            ]);
+        } catch (Throwable $e) {
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+        exit;
     }
 
     /* ─── Staff Attendance Management ─────────────────────────────── */

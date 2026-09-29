@@ -987,16 +987,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Scanner Input Handling ──
     let scanBuffer = '';
     let lastKeyTime = Date.now();
+    let scannerIdleTimeout = null;
 
     scannerInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
+            clearTimeout(scannerIdleTimeout);
             const code = scannerInput.value.trim();
             if (code && !isProcessing) {
                 processScannedCode(code);
             }
             scannerInput.value = '';
         }
+    });
+
+    scannerInput.addEventListener('input', () => {
+        clearTimeout(scannerIdleTimeout);
+        scannerIdleTimeout = setTimeout(() => {
+            const code = scannerInput.value.trim();
+            if (code.length >= 4 && !isProcessing) {
+                processScannedCode(code);
+                scannerInput.value = '';
+            }
+        }, 220);
     });
 
     // ── Process Scan via AJAX ──

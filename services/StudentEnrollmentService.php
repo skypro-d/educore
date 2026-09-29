@@ -558,40 +558,22 @@ final class StudentEnrollmentService
 
     private function generateAttendanceQr(int $applicantId): array
     {
-        $schoolInfo = SchoolContext::info();
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $qrToken = 'ATTENDANCE-STD-' . $applicantId . '-' . bin2hex(random_bytes(4));
-
-        $schoolDomain = trim((string) ($schoolInfo['domain'] ?? ''));
-        $portalHost = ($schoolDomain !== '' && $schoolDomain !== 'localhost') ? preg_replace('#^https?://#', '', $schoolDomain) : $host;
-        $portalHost = preg_replace('#/.*$#', '', $portalHost);
-        $qrData = $scheme . '://' . $portalHost . BASE_URL . '/?route=attendance/scan&token=' . urlencode($qrToken);
-
-        $qrPath = 'qrcodes/std_' . $applicantId . '.png';
-        $qrFullDir = UPLOAD_PATH . 'qrcodes/';
-
-        $qrGenerated = false;
-        if (extension_loaded('gd')) {
-            try {
-                if (!is_dir($qrFullDir)) {
-                    @mkdir($qrFullDir, 0755, true);
-                }
-                if (is_writable($qrFullDir) || is_writable(UPLOAD_PATH)) {
-                    require_once __DIR__ . '/../config/phpqrcode.php';
-                    @QRcode::png($qrData, $qrFullDir . 'std_' . $applicantId . '.png', 'L', 6, 2);
-                    $qrGenerated = true;
-                }
-            } catch (Throwable $qre) {
-                error_log('Offline QR generation in StudentEnrollmentService failed: ' . $qre->getMessage());
-            }
+        require_once __DIR__ . '/QrCodeService.php';
+        try {
+            $qr = QrCodeService::ensureStudentQr($applicantId);
+            return [
+                'token' => $qr['token'],
+                'path' => $qr['relative_path'],
+                'url' => $qr['scan_url'],
+            ];
+        } catch (Throwable $qre) {
+            error_log('Offline QR generation in StudentEnrollmentService failed: ' . $qre->getMessage());
+            return [
+                'token' => 'ATTENDANCE-STD-' . $applicantId . '-' . bin2hex(random_bytes(4)),
+                'path' => null,
+                'url' => '',
+            ];
         }
-
-        return [
-            'token' => $qrToken,
-            'path' => $qrGenerated ? $qrPath : null,
-            'url' => $qrData,
-        ];
     }
 
     private function uploadPassport(array $file): ?string

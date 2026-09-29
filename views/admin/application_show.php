@@ -191,21 +191,46 @@ $documents = [
             <?php endforeach; ?>
         </div>
 
-        <?php if (!empty($application['qr_code']) || !empty($application['student_username'])): ?>
+        <?php 
+        $isEnrolledStudent = ($application['status'] === 'Enrolled') || !empty($application['admission_number']) || !empty($application['student_username']);
+        if ($isEnrolledStudent): 
+            require_once __DIR__ . '/../../services/QrCodeService.php';
+            $studentQrData = QrCodeService::ensureStudentQr($application);
+        ?>
         <div class="profile-card">
-            <div class="profile-section-label"><i class="ti ti-qrcode"></i> Student Identity & Attendance QR Code</div>
-            <div class="d-flex align-items-center gap-3">
-                <?php if (!empty($application['qr_code']) && file_exists(UPLOAD_PATH . $application['qr_code'])): ?>
-                    <img src="<?= url('uploads/' . $application['qr_code']) ?>" alt="Student QR Code" style="width: 110px; height: 110px; border-radius: 8px; border: 1px solid #e2e8f0; padding: 4px;">
-                <?php else: ?>
-                    <div class="d-flex align-items-center justify-content-center bg-light text-muted font-monospace rounded" style="width: 110px; height: 110px; font-size: 11px;">[QR CODE]</div>
-                <?php endif; ?>
-                <div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="profile-section-label mb-0"><i class="ti ti-qrcode text-primary me-1"></i> Student Identity &amp; Attendance QR Code</div>
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1" style="font-size:11px;">
+                    <i class="ti ti-circle-check-filled me-1"></i> High-Resolution Active
+                </span>
+            </div>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div style="background:#ffffff; padding:12px; border:1.5px solid #cbd5e1; border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,0.05); display:inline-flex; flex-direction:column; align-items:center; text-align:center;">
+                    <img src="<?= e($studentQrData['img_url']) ?>" alt="Student QR Code" style="width: 125px; height: 125px; display: block; image-rendering: auto; margin: 0 auto;">
+                    <button type="button" class="btn btn-link btn-sm p-0 mt-2 text-decoration-none" style="font-size:11px; font-weight:700; color:var(--brand-primary);" onclick="openStudentQrModal()">
+                        <i class="ti ti-maximize"></i> Enlarge / Scan Mode
+                    </button>
+                </div>
+                <div style="flex:1; min-width:240px;">
                     <div class="small text-muted mb-1">Student ID / Portal Username</div>
-                    <div class="font-monospace fw-bold text-dark fs-6 mb-2"><?= e($application['student_username'] ?: 'Pending Approval') ?></div>
+                    <div class="font-monospace fw-bold text-dark fs-6 mb-2"><?= e($application['student_username'] ?: ($application['admission_number'] ?? 'Pending Approval')) ?></div>
                     <div class="small text-muted mb-1">Barcode / Admission No.</div>
                     <div class="font-monospace fw-bold text-primary mb-2" style="letter-spacing: 2px;">||| | |||| | ||| <?= e($application['admission_number'] ?: 'Pending') ?></div>
-                    <a class="btn btn-sm btn-outline-primary" href="<?= url('admin/applications/' . $application['id'] . '/id-card') ?>" target="_blank"><i class="ti ti-id me-1"></i> Print Student ID Card</a>
+                    <div class="small text-muted mb-1">Attendance Scanner Token</div>
+                    <div class="font-monospace text-secondary mb-3" style="font-size:11.5px; word-break:break-all; background:#f8fafc; padding:4px 8px; border-radius:6px; border:1px solid #e2e8f0; display:inline-block;">
+                        <?= e($studentQrData['token']) ?>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a class="btn btn-sm btn-outline-primary" href="<?= url('admin/applications/' . $application['id'] . '/id-card') ?>" target="_blank" style="font-weight:600; border-radius:8px;">
+                            <i class="ti ti-id me-1"></i> Print Student ID Card
+                        </a>
+                        <button type="button" class="btn btn-sm btn-light border" style="font-weight:600; border-radius:8px;" onclick="openStudentQrModal()">
+                            <i class="ti ti-qrcode me-1"></i> Quick Scan Modal
+                        </button>
+                        <a class="btn btn-sm btn-outline-secondary" href="<?= e($studentQrData['img_url']) ?>" download="QR_<?= e($application['admission_number'] ?: $application['id']) ?>.png" style="border-radius:8px;">
+                            <i class="ti ti-download me-1"></i> Download QR
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -873,4 +898,84 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+function openStudentQrModal() {
+    const modalEl = document.getElementById('studentQrModal');
+    if (modalEl) {
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+    }
+}
+
+function copyStudentQrToken() {
+    const tokenEl = document.getElementById('modalStudentQrToken');
+    if (tokenEl) {
+        navigator.clipboard.writeText(tokenEl.innerText.trim()).then(() => {
+            const btn = document.getElementById('copyTokenBtn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i class="ti ti-check me-1"></i> Copied!';
+            btn.classList.replace('btn-outline-secondary', 'btn-success');
+            setTimeout(() => {
+                btn.innerHTML = orig;
+                btn.classList.replace('btn-success', 'btn-outline-secondary');
+            }, 2000);
+        });
+    }
+}
 </script>
+
+<?php if (!empty($studentQrData)): ?>
+<!-- Modal for Quick Scan & Large QR Code Display -->
+<div class="modal fade" id="studentQrModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:18px; overflow:hidden;">
+            <div class="modal-header border-0 pb-0 pt-4 px-4">
+                <div>
+                    <h5 class="modal-title fw-bold text-dark mb-0">
+                        <i class="ti ti-qrcode text-primary me-2"></i> Student Attendance QR
+                    </h5>
+                    <p class="text-muted small mb-0">High-resolution QR code for camera &amp; USB scanner verification</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <div class="d-inline-block bg-white p-3 border rounded-4 shadow-sm mb-3" style="border-color:#cbd5e1 !important;">
+                    <img src="<?= e($studentQrData['img_url']) ?>" alt="High Res Student QR" style="width:260px; height:260px; display:block; image-rendering:auto; margin:0 auto;">
+                </div>
+                <h5 class="fw-bold text-dark mb-1"><?= e($application['first_name'] . ' ' . $application['last_name']) ?></h5>
+                <div class="d-flex align-items-center justify-content-center gap-2 mb-3">
+                    <span class="badge bg-primary text-white"><?= e($application['class_name'] ?: 'Enrolled Student') ?></span>
+                    <span class="badge bg-light text-secondary border font-monospace"><?= e($application['admission_number'] ?: 'ADM-0000') ?></span>
+                </div>
+                <div class="p-3 bg-light rounded-3 text-start mb-3 border">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="text-muted small">Scanner Token:</span>
+                        <button type="button" id="copyTokenBtn" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="copyStudentQrToken()">
+                            <i class="ti ti-copy me-1"></i> Copy
+                        </button>
+                    </div>
+                    <div class="font-monospace text-dark fw-bold small" id="modalStudentQrToken" style="word-break:break-all;">
+                        <?= e($studentQrData['token']) ?>
+                    </div>
+                </div>
+                <p class="text-muted small mb-0">
+                    <i class="ti ti-info-circle me-1 text-primary"></i> Point any smartphone camera, USB scanner, or kiosk camera at this code.
+                </p>
+            </div>
+            <div class="modal-footer border-0 bg-light p-3 d-flex justify-content-between">
+                <a href="<?= e($studentQrData['img_url']) ?>" download="QR_<?= e($application['admission_number'] ?: $application['id']) ?>.png" class="btn btn-sm btn-outline-secondary">
+                    <i class="ti ti-download me-1"></i> Save Image
+                </a>
+                <div class="d-flex gap-2">
+                    <a href="<?= url('admin/attendance-scanner') ?>" target="_blank" class="btn btn-sm btn-light border">
+                        <i class="ti ti-external-link me-1"></i> Scanner Terminal
+                    </a>
+                    <a href="<?= url('admin/applications/' . $application['id'] . '/id-card') ?>" target="_blank" class="btn btn-sm btn-primary">
+                        <i class="ti ti-printer me-1"></i> Print ID Card
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>

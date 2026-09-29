@@ -68,6 +68,39 @@
 
     <!-- Right Column: Active Assignments & Authorizations -->
     <div class="col-lg-6">
+        <?php
+        require_once __DIR__ . '/../../services/QrCodeService.php';
+        $staffQr = QrCodeService::ensureStaffQr($staff);
+        ?>
+        <!-- Official Staff Attendance QR Code Card -->
+        <div class="card border-0 shadow-sm p-4 mb-4" style="border-radius:14px; background:#fff;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="h6 fw-bold mb-0" style="color:#0f172a;">
+                    <i class="ti ti-qrcode text-primary me-1"></i> Staff Attendance QR Badge
+                </h4>
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1" style="font-size:11px;">
+                    <i class="ti ti-circle-check-filled me-1"></i> Ready to Scan
+                </span>
+            </div>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div style="background:#ffffff; padding:10px; border:1.5px solid #cbd5e1; border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,0.05); display:inline-flex; flex-direction:column; align-items:center;">
+                    <img src="<?= e($staffQr['img_url']) ?>" alt="Staff QR Code" style="width:120px; height:120px; display:block; image-rendering:auto;">
+                </div>
+                <div style="flex:1; min-width:200px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:#64748b;">Staff Token</div>
+                    <div class="font-monospace text-dark fw-bold mb-2" style="font-size:12px; word-break:break-all; background:#f8fafc; padding:3px 8px; border-radius:6px; border:1px solid #e2e8f0; display:inline-block;">
+                        <?= e($staffQr['token']) ?>
+                    </div>
+                    <p class="text-muted mb-2" style="font-size:12px; line-height:1.4;">
+                        Present this QR code to the entrance kiosk, gate scanner, or supervisor to log your arrival and departure.
+                    </p>
+                    <a href="<?= e($staffQr['img_url']) ?>" download="Staff_QR_<?= e($staff['staff_id']) ?>.png" class="btn btn-sm btn-outline-primary" style="font-size:12px; font-weight:600; border-radius:7px;">
+                        <i class="ti ti-download me-1"></i> Save to Phone
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <div class="card border-0 shadow-sm p-4 h-100" style="border-radius:14px; background:#fff;">
             <h4 class="h6 fw-bold mb-3" style="color:#0f172a;">Active Class & Subject Allocations</h4>
             <?php if (empty($assignments)): ?>

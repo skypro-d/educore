@@ -523,23 +523,31 @@ final class PublicController
             exit;
         }
 
-        // 2. Find student by qr_data token. Explicitly include a.school_id to bypass TenantPDO auto-scoping.
+        // 2. Find student by qr_data token or admission/application number. Explicitly include a.school_id to bypass TenantPDO auto-scoping.
         $stmt = $this->db->prepare(
             "SELECT a.*, c.name AS class_name
              FROM applicants a
              LEFT JOIN classes c ON c.id = a.class_id
-             WHERE a.school_id IS NOT NULL AND a.qr_data = ?"
+             WHERE a.school_id IS NOT NULL AND (a.qr_data = ? OR a.admission_number = ? OR a.application_number = ?)"
         );
-        $stmt->execute([$token]);
+        $stmt->execute([$token, $token, $token]);
         $applicant = $stmt->fetch();
 
         if ($applicant) {
             SchoolContext::set((int)$applicant['school_id']);
         }
 
-        if (!$applicant && str_starts_with($token, 'ATTENDANCE-STD-')) {
-            $parts = explode('-', $token);
-            $studentId = isset($parts[2]) ? (int)$parts[2] : 0;
+        if (!$applicant) {
+            $studentId = 0;
+            if (preg_match('/attendance[-_\/]std[-_\/](\d+)/i', $token, $m)) {
+                $studentId = (int)$m[1];
+            } elseif (str_starts_with($token, 'ATTENDANCE-STD-')) {
+                $parts = explode('-', $token);
+                if (isset($parts[2]) && ctype_digit($parts[2])) {
+                    $studentId = (int)$parts[2];
+                }
+            }
+
             if ($studentId > 0) {
                 $stmtLegacy = $this->db->prepare(
                     "SELECT a.*, c.name AS class_name
