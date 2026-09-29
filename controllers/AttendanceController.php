@@ -367,46 +367,70 @@ final class AttendanceController
             exit;
         }
 
-        // Extract token if URL or mangled keyboard layout URL was scanned
-        $token = trim($rawCode);
-        if (preg_match('/[?&_\-\^]token[=0\):]([^\s&#\^?]+?)(?:http|$)/i', $rawCode, $matches)) {
-            $token = urldecode(rtrim($matches[1], '/'));
-        } elseif (preg_match('/[?&]token=([^&#\s]+)/i', $rawCode, $matches)) {
-            $token = urldecode(rtrim($matches[1], '/'));
+        // ── Normalization & Security Validation ──
+        $attendanceCode = normalizeAttendanceQr($rawCode);
+        if ($attendanceCode === null) {
+            echo json_encode([
+                'success'      => false,
+                'action'       => 'invalid',
+                'badge_status' => 'danger',
+                'title'        => '✕ Invalid QR Code',
+                'message'      => 'Invalid attendance QR code.',
+                'raw_code'     => $rawCode
+            ]);
+            exit;
         }
 
-        $token = trim($token);
-        $normalizedToken = str_replace('/', '-', $token);
-
-        // ── STEP 1: Check if the scanned token belongs to a STAFF MEMBER ──
-        $stmtStaff = $this->db->prepare(
-            "SELECT s.*, r.name AS role_title
-             FROM staff s
-             LEFT JOIN roles r ON r.id = s.role_id
-             WHERE (s.qr_data = ? OR s.qr_data = ? OR s.staff_id = ?)
+        // ── Locate Student Record (PDO Prepared Statement) ──
+        $stmt = $this->db->prepare(
+            "SELECT a.*, c.name AS class_name
+             FROM applicants a
+             LEFT JOIN classes c ON c.id = a.class_id
+             WHERE a.qr_data = ?
              LIMIT 1"
         );
-        $stmtStaff->execute([$token, $normalizedToken, $token]);
-        $staffMember = $stmtStaff->fetch(PDO::FETCH_ASSOC);
+        $stmt->execute([$attendanceCode]);
+        $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$staffMember && preg_match('/attendance[-_\/]stf[-_\/](\d+)/i', $rawCode, $mStaff)) {
-            $staffId = (int)$mStaff[1];
-            $stmtStaffId = $this->db->prepare(
-                "SELECT s.*, r.name AS role_title FROM staff s LEFT JOIN roles r ON r.id = s.role_id WHERE s.id = ? LIMIT 1"
+        // ── Locate Staff Record if not a student ──
+        $staffMember = null;
+        if (!$student) {
+            $stmtStaff = $this->db->prepare(
+                "SELECT s.*, r.name AS role_title
+                 FROM staff s
+                 LEFT JOIN roles r ON r.id = s.role_id
+                 WHERE s.qr_data = ?
+                 LIMIT 1"
             );
-            $stmtStaffId->execute([$staffId]);
-            $staffMember = $stmtStaffId->fetch(PDO::FETCH_ASSOC);
+            $stmtStaff->execute([$attendanceCode]);
+            $staffMember = $stmtStaff->fetch(PDO::FETCH_ASSOC);
         }
 
+        // ── Record Not Found ──
+        if (!$student && !$staffMember) {
+            echo json_encode([
+                'success'           => false,
+                'action'            => 'not_found',
+                'badge_status'      => 'danger',
+                'title'             => '✕ Student Not Found',
+                'message'           => 'Student not found.',
+                'raw_code'          => $rawCode,
+                'attendance_number' => $attendanceCode
+            ]);
+            exit;
+        }
+
+        $today = date('Y-m-d');
+        $nowTime = date('H:i:s');
+        $displayDate = date('d F Y');
+        $displayTime = date('h:i A', strtotime($nowTime));
+        $adminId = (int) ($_SESSION['admin']['id'] ?? 0);
+
+        // ── STEP A: Process Staff Member Attendance ──
         if ($staffMember) {
             $staffId = (int) $staffMember['id'];
-            $today = date('Y-m-d');
-            $nowTime = date('H:i:s');
-            $adminId = (int) ($_SESSION['admin']['id'] ?? 0);
             $staffName = trim($staffMember['first_name'] . ' ' . $staffMember['last_name']);
             $roleTitle = !empty($staffMember['role_title']) ? ucwords(str_replace('_', ' ', $staffMember['role_title'])) : ($staffMember['role'] ?? 'Staff Member');
-            $debounceMins = (int) setting('attendance_debounce_minutes', 15);
-            if ($debounceMins < 1) $debounceMins = 1;
 
             $staffInfo = [
                 'id'          => $staffId,
@@ -420,85 +444,45 @@ final class AttendanceController
 
             if ($staffMember['status'] !== 'Active') {
                 echo json_encode([
-                    'success'      => false,
-                    'person_type'  => 'staff',
-                    'action'       => 'inactive_staff',
-                    'badge_status' => 'danger',
-                    'title'        => 'Staff Inactive',
-                    'message'      => "Staff {$staffName} is currently marked as {$staffMember['status']}.",
-                    'staff'        => $staffInfo,
-                    'student'      => [
-                        'id' => $staffId,
-                        'name' => $staffName,
-                        'admission_number' => $staffMember['staff_id'],
-                        'class_name' => $roleTitle,
-                        'photo' => $staffInfo['photo']
-                    ]
+                    'success'           => false,
+                    'person_type'       => 'staff',
+                    'action'            => 'inactive_staff',
+                    'badge_status'      => 'danger',
+                    'title'             => 'Staff Inactive',
+                    'message'           => "Staff {$staffName} is currently marked as {$staffMember['status']}.",
+                    'staff'             => $staffInfo,
+                    'attendance_number' => $attendanceCode
                 ]);
                 exit;
             }
 
-            // Check today's staff attendance record
             $chkStaff = $this->db->prepare(
-                "SELECT id, staff_id, time_in, time_out, status FROM staff_attendance WHERE staff_id = ? AND date = ? LIMIT 1"
+                "SELECT id, staff_id, time_in, time_out, status, created_at FROM staff_attendance WHERE staff_id = ? AND date = ? LIMIT 1"
             );
             $chkStaff->execute([$staffId, $today]);
             $existingStaff = $chkStaff->fetch(PDO::FETCH_ASSOC);
 
-            // CASE 1: No record today
+            // Case 1: No staff record today -> TIME IN
             if (!$existingStaff) {
-                // If scanning during afternoon / dismissal period, log as check-out departure
-                if (AttendanceRules::isDismissalTime()) {
-                    $this->db->prepare(
-                        "INSERT INTO staff_attendance (staff_id, school_id, date, time_in, time_out, status, scan_method, marked_by, created_at)
-                         VALUES (?, 1, ?, ?, ?, 'Present', 'qr_usb', ?, NOW())"
-                    )->execute([$staffId, $today, $nowTime, $nowTime, $adminId ?: null]);
-
-                    echo json_encode([
-                        'success'      => true,
-                        'person_type'  => 'staff',
-                        'action'       => 'check_out',
-                        'badge_status' => 'primary',
-                        'title'        => 'STAFF CHECK-OUT RECORDED',
-                        'message'      => "Goodbye, {$staffName}! Departure logged at " . date('g:i A', strtotime($nowTime)) . ".",
-                        'status'       => 'Checked Out',
-                        'time'         => date('g:i A', strtotime($nowTime)),
-                        'staff'        => $staffInfo,
-                        'student'      => [
-                            'id' => $staffId,
-                            'name' => $staffName,
-                            'admission_number' => $staffMember['staff_id'],
-                            'class_name' => $roleTitle,
-                            'photo' => $staffInfo['photo']
-                        ]
-                    ]);
-                    exit;
-                }
-
                 $resolvedStatus = AttendanceRules::resolveCurrentStatus();
                 if ($resolvedStatus === 'Denied') {
-                    $allowLateAfterClose = (bool) (int) setting('attendance_allow_late_after_close', 1);
-                    if (!$allowLateAfterClose) {
-                        echo json_encode([
-                            'success'      => false,
-                            'person_type'  => 'staff',
-                            'action'       => 'denied',
-                            'badge_status' => 'danger',
-                            'title'        => 'Scan Denied (Window Closed)',
-                            'message'      => "Attendance window is closed for today ({$nowTime}). Entry denied.",
-                            'time'         => date('g:i A', strtotime($nowTime)),
-                            'staff'        => $staffInfo,
-                            'student'      => [
-                                'id' => $staffId,
-                                'name' => $staffName,
-                                'admission_number' => $staffMember['staff_id'],
-                                'class_name' => $roleTitle,
-                                'photo' => $staffInfo['photo']
-                            ]
-                        ]);
-                        exit;
-                    }
-                    $resolvedStatus = 'Late';
+                    $allowLate = (bool) (int) setting('attendance_allow_late_after_close', 1);
+                    $resolvedStatus = $allowLate ? 'Late' : 'Denied';
+                }
+                if ($resolvedStatus === 'Denied') {
+                    echo json_encode([
+                        'success'           => false,
+                        'person_type'       => 'staff',
+                        'action'            => 'denied',
+                        'badge_status'      => 'danger',
+                        'title'             => 'Scan Denied (Window Closed)',
+                        'message'           => "Attendance window is closed for today ({$nowTime}). Entry denied.",
+                        'time'              => $displayTime,
+                        'date'              => $displayDate,
+                        'staff'             => $staffInfo,
+                        'attendance_number' => $attendanceCode
+                    ]);
+                    exit;
                 }
 
                 $this->db->prepare(
@@ -507,49 +491,39 @@ final class AttendanceController
                 )->execute([$staffId, $today, $nowTime, $resolvedStatus, $adminId ?: null]);
 
                 echo json_encode([
-                    'success'      => true,
-                    'person_type'  => 'staff',
-                    'action'       => 'check_in',
-                    'badge_status' => 'success',
-                    'title'        => 'STAFF ARRIVAL RECORDED',
-                    'message'      => "Welcome, {$staffName}! Arrival logged at " . date('g:i A', strtotime($nowTime)) . " ({$resolvedStatus}).",
-                    'status'       => $resolvedStatus,
-                    'time'         => date('g:i A', strtotime($nowTime)),
-                    'staff'        => $staffInfo,
-                    'student'      => [
-                        'id' => $staffId,
-                        'name' => $staffName,
-                        'admission_number' => $staffMember['staff_id'],
-                        'class_name' => $roleTitle,
-                        'photo' => $staffInfo['photo']
-                    ]
+                    'success'           => true,
+                    'person_type'       => 'staff',
+                    'action'            => 'check_in',
+                    'badge_status'      => 'success',
+                    'title'             => '✓ TIME IN',
+                    'message'           => "✓ Attendance Recorded\n\nStaff:\n{$staffName}\n\nAttendance Number:\n{$attendanceCode}\n\nAction:\nTIME IN\n\nTime:\n{$displayTime}\n\nDate:\n{$displayDate}",
+                    'status'            => $resolvedStatus,
+                    'time'              => $displayTime,
+                    'date'              => $displayDate,
+                    'staff'             => $staffInfo,
+                    'attendance_number' => $attendanceCode
                 ]);
                 exit;
             }
 
-            // CASE 2: Record exists, time_out IS NULL -> Debounce or Check-out
+            // Case 2: Checked in, but time_out IS NULL
             if (empty($existingStaff['time_out'])) {
-                $timeInSeconds = !empty($existingStaff['time_in']) ? strtotime($today . ' ' . $existingStaff['time_in']) : (time() - 3600);
-                $diffMinutes = (int) round((time() - $timeInSeconds) / 60);
+                $timeInSec = !empty($existingStaff['time_in']) ? strtotime($today . ' ' . $existingStaff['time_in']) : strtotime($existingStaff['created_at'] ?? 'now');
+                $diffSec = time() - $timeInSec;
 
-                if ($diffMinutes < $debounceMins && !AttendanceRules::isDismissalTime()) {
+                if ($diffSec < 5) {
                     echo json_encode([
-                        'success'      => false,
-                        'person_type'  => 'staff',
-                        'action'       => 'duplicate_in',
-                        'badge_status' => 'warning',
-                        'title'        => 'STAFF ALREADY CHECKED IN',
-                        'message'      => "{$staffName} already checked in at " . date('g:i A', $timeInSeconds) . " ({$diffMinutes} min ago). Duplicate scan ignored.",
-                        'status'       => $existingStaff['status'],
-                        'time'         => date('g:i A', $timeInSeconds),
-                        'staff'        => $staffInfo,
-                        'student'      => [
-                            'id' => $staffId,
-                            'name' => $staffName,
-                            'admission_number' => $staffMember['staff_id'],
-                            'class_name' => $roleTitle,
-                            'photo' => $staffInfo['photo']
-                        ]
+                        'success'           => false,
+                        'person_type'       => 'staff',
+                        'action'            => 'duplicate_in',
+                        'badge_status'      => 'warning',
+                        'title'             => 'ALREADY CHECKED IN',
+                        'message'           => 'No duplicate attendance event.',
+                        'status'            => $existingStaff['status'],
+                        'time'              => date('h:i A', $timeInSec),
+                        'date'              => $displayDate,
+                        'staff'             => $staffInfo,
+                        'attendance_number' => $attendanceCode
                     ]);
                     exit;
                 }
@@ -559,98 +533,39 @@ final class AttendanceController
                 )->execute([$nowTime, $existingStaff['id']]);
 
                 echo json_encode([
-                    'success'      => true,
-                    'person_type'  => 'staff',
-                    'action'       => 'check_out',
-                    'badge_status' => 'primary',
-                    'title'        => 'STAFF CHECK-OUT RECORDED',
-                    'message'      => "Goodbye, {$staffName}! Departure logged at " . date('g:i A', strtotime($nowTime)) . ".",
-                    'status'       => 'Checked Out',
-                    'time'         => date('g:i A', strtotime($nowTime)),
-                    'staff'        => $staffInfo,
-                    'student'      => [
-                        'id' => $staffId,
-                        'name' => $staffName,
-                        'admission_number' => $staffMember['staff_id'],
-                        'class_name' => $roleTitle,
-                        'photo' => $staffInfo['photo']
-                    ]
+                    'success'           => true,
+                    'person_type'       => 'staff',
+                    'action'            => 'check_out',
+                    'badge_status'      => 'primary',
+                    'title'             => '✓ TIME OUT',
+                    'message'           => "✓ Attendance Recorded\n\nStaff:\n{$staffName}\n\nAttendance Number:\n{$attendanceCode}\n\nAction:\nTIME OUT\n\nTime:\n{$displayTime}\n\nDate:\n{$displayDate}",
+                    'status'            => 'Checked Out',
+                    'time'              => $displayTime,
+                    'date'              => $displayDate,
+                    'staff'             => $staffInfo,
+                    'attendance_number' => $attendanceCode
                 ]);
                 exit;
             }
 
-            // CASE 3: Already checked out
-            $timeOutSeconds = strtotime($today . ' ' . $existingStaff['time_out']);
+            // Case 3: Already checked out
             echo json_encode([
-                'success'      => false,
-                'person_type'  => 'staff',
-                'action'       => 'duplicate_out',
-                'badge_status' => 'warning',
-                'title'        => 'STAFF ALREADY CHECKED OUT',
-                'message'      => "{$staffName} already checked out today at " . date('g:i A', $timeOutSeconds) . ".",
-                'status'       => 'Checked Out',
-                'time'         => date('g:i A', $timeOutSeconds),
-                'staff'        => $staffInfo,
-                'student'      => [
-                    'id' => $staffId,
-                    'name' => $staffName,
-                    'admission_number' => $staffMember['staff_id'],
-                    'class_name' => $roleTitle,
-                    'photo' => $staffInfo['photo']
-                ]
+                'success'           => false,
+                'person_type'       => 'staff',
+                'action'            => 'duplicate_out',
+                'badge_status'      => 'warning',
+                'title'             => 'ALREADY COMPLETED',
+                'message'           => 'Attendance already completed for today.',
+                'status'            => 'Checked Out',
+                'time'              => date('h:i A', strtotime($today . ' ' . $existingStaff['time_out'])),
+                'date'              => $displayDate,
+                'staff'             => $staffInfo,
+                'attendance_number' => $attendanceCode
             ]);
             exit;
         }
 
-        // ── STEP 2: Locate student by qr_data, normalized qr_data, admission number, or application number ──
-        $stmt = $this->db->prepare(
-            "SELECT a.*, c.name AS class_name
-             FROM applicants a
-             LEFT JOIN classes c ON c.id = a.class_id
-             WHERE (a.qr_data = ? OR a.qr_data = ? OR a.admission_number = ? OR a.application_number = ?)
-             LIMIT 1"
-        );
-        $stmt->execute([$token, $normalizedToken, $token, $token]);
-        $student = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        // Fallback A: Match by student ID from attendance token pattern (e.g. ATTENDANCE-STD-8845 or attendance/std/8845)
-        if (!$student && preg_match('/attendance[-_\/]std[-_\/](\d+)/i', $rawCode, $m)) {
-            $studentId = (int)$m[1];
-            $stmtId = $this->db->prepare(
-                "SELECT a.*, c.name AS class_name
-                 FROM applicants a
-                 LEFT JOIN classes c ON c.id = a.class_id
-                 WHERE a.id = ? LIMIT 1"
-            );
-            $stmtId->execute([$studentId]);
-            $student = $stmtId->fetch(PDO::FETCH_ASSOC);
-        }
-
-        // Fallback B: If token is directly an integer ID
-        if (!$student && ctype_digit($token)) {
-            $stmtId = $this->db->prepare(
-                "SELECT a.*, c.name AS class_name
-                 FROM applicants a
-                 LEFT JOIN classes c ON c.id = a.class_id
-                 WHERE a.id = ? LIMIT 1"
-            );
-            $stmtId->execute([(int)$token]);
-            $student = $stmtId->fetch(PDO::FETCH_ASSOC);
-        }
-
-        // Student existence check
-        if (!$student) {
-            echo json_encode([
-                'success'      => false,
-                'action'       => 'not_found',
-                'badge_status' => 'danger',
-                'title'        => 'Record Not Found',
-                'message'      => 'Unrecognized QR code or token. Not registered as student or staff.',
-                'raw_code'     => $rawCode
-            ]);
-            exit;
-        }
-
+        // ── STEP B: Process Student Attendance ──
         // Multi-tenant school isolation check
         $currentSchoolId = SchoolContext::id();
         if ($currentSchoolId !== null && (int)$student['school_id'] !== (int)$currentSchoolId) {
@@ -659,43 +574,14 @@ final class AttendanceController
                 'action'       => 'cross_school_denied',
                 'badge_status' => 'danger',
                 'title'        => 'Cross-School Access Denied',
-                'message'      => 'This QR code belongs to a member from another school.'
+                'message'      => 'This QR code belongs to a student from another school.'
             ]);
             exit;
         }
-
-        // Enrollment & Active status check
-        if ($student['status'] !== 'Enrolled' || (!empty($student['student_status']) && $student['student_status'] !== 'Active')) {
-            $statusLabel = $student['status'] !== 'Enrolled' ? $student['status'] : ($student['student_status'] ?? 'Inactive');
-            echo json_encode([
-                'success'      => false,
-                'action'       => 'inactive_student',
-                'badge_status' => 'danger',
-                'title'        => 'Student Inactive',
-                'message'      => "Student {$student['first_name']} {$student['last_name']} is currently {$statusLabel}.",
-                'student'      => [
-                    'id'               => (int) $student['id'],
-                    'name'             => trim($student['first_name'] . ' ' . $student['last_name']),
-                    'admission_number' => $student['admission_number'] ?: $student['application_number'],
-                    'class_name'       => $student['class_name'] ?: 'N/A',
-                    'photo'            => !empty($student['passport_photo']) ? url('uploads/' . $student['passport_photo']) : null
-                ]
-            ]);
-            exit;
-        }
-
-        $studentId = (int) $student['id'];
-        $classId   = (int) ($student['class_id'] ?? 0);
-        $schoolId  = (int) ($student['school_id'] ?? 1);
-        $today     = date('Y-m-d');
-        $nowTime   = date('H:i:s');
-        $adminId   = (int) ($_SESSION['admin']['id'] ?? 0);
-        $debounceMins = (int) setting('attendance_debounce_minutes', 15);
-        if ($debounceMins < 1) $debounceMins = 1;
 
         $studentName = trim($student['first_name'] . ' ' . $student['last_name']);
         $studentInfo = [
-            'id'               => $studentId,
+            'id'               => (int) $student['id'],
             'name'             => $studentName,
             'first_name'       => $student['first_name'],
             'last_name'        => $student['last_name'],
@@ -705,9 +591,28 @@ final class AttendanceController
             'parent_phone'     => mask_phone($student['parent_phone'] ?? ''),
         ];
 
+        // Enrollment & Active status check
+        if ($student['status'] !== 'Enrolled' || (!empty($student['student_status']) && $student['student_status'] !== 'Active')) {
+            $statusLabel = $student['status'] !== 'Enrolled' ? $student['status'] : ($student['student_status'] ?? 'Inactive');
+            echo json_encode([
+                'success'           => false,
+                'action'            => 'inactive_student',
+                'badge_status'      => 'danger',
+                'title'             => 'Student Inactive',
+                'message'           => "Student {$studentName} is currently {$statusLabel}.",
+                'student'           => $studentInfo,
+                'attendance_number' => $attendanceCode
+            ]);
+            exit;
+        }
+
+        $studentId = (int) $student['id'];
+        $classId   = (int) ($student['class_id'] ?? 0);
+        $schoolId  = (int) ($student['school_id'] ?? 1);
+
         // Check today's attendance record
         $chkStmt = $this->db->prepare(
-            "SELECT id, applicant_id, class_id, time_in, time_out, status, alert_sent, timeout_alert_sent
+            "SELECT id, applicant_id, class_id, time_in, time_out, status, alert_sent, timeout_alert_sent, created_at
              FROM attendance
              WHERE applicant_id = ? AND date = ?
              LIMIT 1"
@@ -715,83 +620,22 @@ final class AttendanceController
         $chkStmt->execute([$studentId, $today]);
         $existing = $chkStmt->fetch(PDO::FETCH_ASSOC);
 
-        // ── CASE 1: No attendance record today ──
+        // ── CASE 1: No attendance record today -> First Scan = TIME IN ──
         if (!$existing) {
-            // If scanning at or after dismissal time (or afternoon departure), record as dismissal check-out directly
-            if (AttendanceRules::isDismissalTime()) {
-                $this->db->beginTransaction();
-                try {
-                    $ins = $this->db->prepare(
-                        "INSERT INTO attendance (applicant_id, class_id, school_id, date, time_in, time_out, status, scan_method, alert_sent, timeout_alert_sent, marked_by, created_at)
-                         VALUES (?, ?, ?, ?, ?, ?, 'Present', 'qr_usb', 1, 0, ?, NOW())"
-                    );
-                    $ins->execute([$studentId, $classId, $schoolId, $today, $nowTime, $nowTime, $adminId ?: null]);
-                    $attendanceId = (int) $this->db->lastInsertId();
-
-                    // Insert exit log
-                    $isEarly = (date('H:i') < AttendanceRules::getDismissalTime());
-                    $exitType = $isEarly ? 'early' : 'normal';
-                    $exitReason = $isEarly ? 'Early Departure' : 'Normal Dismissal';
-                    $insExit = $this->db->prepare(
-                        "INSERT INTO student_exit_logs
-                            (school_id, student_id, attendance_id, exit_type, exit_reason, exit_date, exit_time, exited_at, scanned_by, scan_method, qr_token, verification_status, sms_status, created_at)
-                         VALUES
-                            (?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'qr_usb', ?, 'verified', 'pending', NOW())"
-                    );
-                    $insExit->execute([$schoolId, $studentId, $attendanceId, $exitType, $exitReason, $today, $nowTime, $adminId ?: null, $token]);
-                    $this->db->commit();
-                } catch (Throwable $e) {
-                    $this->db->rollBack();
-                    echo json_encode([
-                        'success'      => false,
-                        'action'       => 'error',
-                        'badge_status' => 'danger',
-                        'title'        => 'Database Error',
-                        'message'      => 'Failed to save checkout: ' . $e->getMessage()
-                    ]);
-                    exit;
-                }
-
-                // Dispatch Check-out Notification asynchronously
-                if ((int) setting('attendance_checkout_sms_enabled', 1) || (int) setting('attendance_checkout_email_enabled', 1)) {
-                    $exitData = [
-                        'exit_date'          => $today,
-                        'exit_time'          => $nowTime,
-                        'exit_type'          => 'normal',
-                        'exit_reason'        => 'School Dismissal',
-                        'pickup_person_name' => 'Self / Guardian'
-                    ];
-                    AttendanceService::dispatchCheckoutNotification($student, $exitData, $attendanceId);
-                }
-
-                echo json_encode([
-                    'success'      => true,
-                    'action'       => 'check_out',
-                    'badge_status' => 'primary',
-                    'title'        => 'CHECK-OUT RECORDED',
-                    'message'      => "Goodbye, {$studentName}! Dismissal departure logged at " . date('g:i A', strtotime($nowTime)) . ".",
-                    'status'       => 'Checked Out',
-                    'time'         => date('g:i A', strtotime($nowTime)),
-                    'student'      => $studentInfo
-                ]);
-                exit;
-            }
-
-            // Morning Check-in Window
             $resolvedStatus = AttendanceRules::resolveCurrentStatus();
-            $isDenied = ($resolvedStatus === 'Denied');
-
-            if ($isDenied) {
+            if ($resolvedStatus === 'Denied') {
                 $allowLateAfterClose = (bool) (int) setting('attendance_allow_late_after_close', 1);
                 if (!$allowLateAfterClose) {
                     echo json_encode([
-                        'success'      => false,
-                        'action'       => 'denied',
-                        'badge_status' => 'danger',
-                        'title'        => 'Scan Denied (Window Closed)',
-                        'message'      => "Attendance window is closed for today ({$nowTime}). Entry denied.",
-                        'time'         => date('g:i A', strtotime($nowTime)),
-                        'student'      => $studentInfo
+                        'success'           => false,
+                        'action'            => 'denied',
+                        'badge_status'      => 'danger',
+                        'title'             => 'Scan Denied (Window Closed)',
+                        'message'           => "Attendance window is closed for today ({$nowTime}). Entry denied.",
+                        'time'              => $displayTime,
+                        'date'              => $displayDate,
+                        'student'           => $studentInfo,
+                        'attendance_number' => $attendanceCode
                     ]);
                     exit;
                 }
@@ -823,40 +667,43 @@ final class AttendanceController
             AttendanceService::dispatchCheckinNotification($student, $nowTime, $resolvedStatus, $attendanceId);
 
             echo json_encode([
-                'success'      => true,
-                'action'       => 'check_in',
-                'badge_status' => 'success',
-                'title'        => 'CHECK-IN RECORDED',
-                'message'      => "Welcome, {$studentName}! Marked as {$resolvedStatus}.",
-                'status'       => $resolvedStatus,
-                'time'         => date('g:i A', strtotime($nowTime)),
-                'student'      => $studentInfo
+                'success'           => true,
+                'action'            => 'check_in',
+                'badge_status'      => 'success',
+                'title'             => '✓ TIME IN',
+                'message'           => "✓ Attendance Recorded\n\nStudent:\n{$studentName}\n\nAttendance Number:\n{$attendanceCode}\n\nAction:\nTIME IN\n\nTime:\n{$displayTime}\n\nDate:\n{$displayDate}",
+                'status'            => $resolvedStatus,
+                'time'              => $displayTime,
+                'date'              => $displayDate,
+                'attendance_number' => $attendanceCode,
+                'student'           => $studentInfo
             ]);
             exit;
         }
 
-        // ── CASE 2: Record exists, but time_out IS NULL ──
+        // ── CASE 2: Record exists, but time_out IS NULL -> Second Scan = TIME OUT ──
         if (empty($existing['time_out'])) {
-            $timeInSeconds = !empty($existing['time_in']) ? strtotime($today . ' ' . $existing['time_in']) : (time() - 3600);
-            $nowSeconds    = time();
-            $diffMinutes   = (int) round(($nowSeconds - $timeInSeconds) / 60);
+            $timeInSec = !empty($existing['time_in']) ? strtotime($today . ' ' . $existing['time_in']) : strtotime($existing['created_at'] ?? 'now');
+            $diffSec = time() - $timeInSec;
 
-            // Subcase 2A: Within debounce window AND not yet dismissal time → Duplicate check-in attempt
-            if ($diffMinutes < $debounceMins && !AttendanceRules::isDismissalTime()) {
+            // Debounce protection: Ignore duplicate scan within 5 seconds
+            if ($diffSec < 5) {
                 echo json_encode([
-                    'success'      => false,
-                    'action'       => 'duplicate_in',
-                    'badge_status' => 'warning',
-                    'title'        => 'ALREADY CHECKED IN',
-                    'message'      => "{$studentName} already checked in at " . date('g:i A', $timeInSeconds) . " ({$diffMinutes} min ago). Duplicate scan ignored.",
-                    'status'       => $existing['status'],
-                    'time'         => date('g:i A', $timeInSeconds),
-                    'student'      => $studentInfo
+                    'success'           => false,
+                    'action'            => 'duplicate_in',
+                    'badge_status'      => 'warning',
+                    'title'             => 'ALREADY CHECKED IN',
+                    'message'           => 'No duplicate attendance event.',
+                    'status'            => $existing['status'],
+                    'time'              => date('h:i A', $timeInSec),
+                    'date'              => $displayDate,
+                    'attendance_number' => $attendanceCode,
+                    'student'           => $studentInfo
                 ]);
                 exit;
             }
 
-            // Subcase 2B: Outside debounce window OR Dismissal time reached → Record CHECK-OUT
+            // Record CHECK-OUT
             $this->db->beginTransaction();
             try {
                 $upd = $this->db->prepare(
@@ -884,7 +731,7 @@ final class AttendanceController
                          VALUES
                             (?, ?, ?, ?, ?, ?, ?, NOW(), ?, 'qr_usb', ?, 'verified', 'pending', NOW())"
                     );
-                    $insExit->execute([$schoolId, $studentId, (int)$existing['id'], $exitType, $exitReason, $today, $nowTime, $adminId ?: null, $token]);
+                    $insExit->execute([$schoolId, $studentId, (int)$existing['id'], $exitType, $exitReason, $today, $nowTime, $adminId ?: null, $attendanceCode]);
                 }
 
                 $this->db->commit();
@@ -913,29 +760,33 @@ final class AttendanceController
             }
 
             echo json_encode([
-                'success'      => true,
-                'action'       => 'check_out',
-                'badge_status' => 'primary',
-                'title'        => 'CHECK-OUT RECORDED',
-                'message'      => "Goodbye, {$studentName}! Departure logged at " . date('g:i A', strtotime($nowTime)) . ".",
-                'status'       => 'Checked Out',
-                'time'         => date('g:i A', strtotime($nowTime)),
-                'student'      => $studentInfo
+                'success'           => true,
+                'action'            => 'check_out',
+                'badge_status'      => 'primary',
+                'title'             => '✓ TIME OUT',
+                'message'           => "✓ Attendance Recorded\n\nStudent:\n{$studentName}\n\nAttendance Number:\n{$attendanceCode}\n\nAction:\nTIME OUT\n\nTime:\n{$displayTime}\n\nDate:\n{$displayDate}",
+                'status'            => 'Checked Out',
+                'time'              => $displayTime,
+                'date'              => $displayDate,
+                'attendance_number' => $attendanceCode,
+                'student'           => $studentInfo
             ]);
             exit;
         }
 
-        // ── CASE 3: Record exists and time_out IS ALREADY RECORDED ──
-        $timeOutSeconds = strtotime($today . ' ' . $existing['time_out']);
+        // ── CASE 3: Record exists and time_out IS ALREADY RECORDED -> Third Scan ──
+        $timeOutSec = strtotime($today . ' ' . $existing['time_out']);
         echo json_encode([
-            'success'      => false,
-            'action'       => 'duplicate_out',
-            'badge_status' => 'warning',
-            'title'        => 'ALREADY CHECKED OUT',
-            'message'      => "{$studentName} already checked out today at " . date('g:i A', $timeOutSeconds) . ". No further scan required.",
-            'status'       => 'Checked Out',
-            'time'         => date('g:i A', $timeOutSeconds),
-            'student'      => $studentInfo
+            'success'           => false,
+            'action'            => 'duplicate_out',
+            'badge_status'      => 'warning',
+            'title'             => 'ALREADY COMPLETED',
+            'message'           => 'Attendance already completed for today.',
+            'status'            => 'Checked Out',
+            'time'              => date('h:i A', $timeOutSec),
+            'date'              => $displayDate,
+            'attendance_number' => $attendanceCode,
+            'student'           => $studentInfo
         ]);
         exit;
     }

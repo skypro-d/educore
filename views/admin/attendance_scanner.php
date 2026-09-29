@@ -90,7 +90,7 @@ $pageTitle = 'Attendance Scanner Terminal';
             <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-2">
                     <span class="scanner-dot pulse-green" id="scannerStatusDot"></span>
-                    <span class="fw-bold text-dark small" id="scannerStatusText">SCANNER READY</span>
+                    <span class="fw-bold text-dark small" id="scannerStatusText">Ready to scan...</span>
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     <span class="badge bg-light text-secondary border px-2 py-1 small">
@@ -110,7 +110,7 @@ $pageTitle = 'Attendance Scanner Terminal';
                     <div class="scan-icon-wrap mx-auto mb-3">
                         <i class="ti ti-qrcode fs-1 text-primary"></i>
                     </div>
-                    <h4 class="fw-bold text-dark mb-1" id="scanPromptTitle">SCAN STUDENT OR STAFF QR CODE</h4>
+                    <h4 class="fw-bold text-dark mb-1" id="scanPromptTitle">Scan Student QR Code</h4>
                     <p class="text-muted small mb-0" id="scanPromptDesc">
                         Present EduCore ID card or mobile QR code to the <strong>HIPPOINT X7-1000</strong> scanner.
                     </p>
@@ -623,7 +623,7 @@ function executeScan(qrPayload) {
     // Visual feedback: Scanner Busy
     const dot = document.getElementById('scannerStatusDot');
     dot.className = 'scanner-dot pulse-yellow';
-    document.getElementById('scannerStatusText').innerText = 'IDENTIFYING STUDENT...';
+    document.getElementById('scannerStatusText').innerText = 'Processing...';
 
     // Auto-dismiss test QR modal if open so result card is visible
     const modalEl = document.getElementById('testQrModal');
@@ -707,7 +707,7 @@ function showScanResultCard(data) {
         document.getElementById('resultClassName').style.backgroundColor = '';
     }
 
-    document.getElementById('resultAdmNo').innerText = person.staff_id || person.admission_number || 'N/A';
+    document.getElementById('resultAdmNo').innerText = data.attendance_number || person.staff_id || person.admission_number || 'N/A';
     document.getElementById('resultScanTime').innerText = data.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     document.getElementById('resultMessageText').innerText = data.message || '';
 
@@ -765,7 +765,7 @@ function resetToReadyNow() {
 
     const dot = document.getElementById('scannerStatusDot');
     dot.className = 'scanner-dot pulse-green';
-    document.getElementById('scannerStatusText').innerText = 'SCANNER READY';
+    document.getElementById('scannerStatusText').innerText = 'Ready to scan...';
 
     isProcessingScan = false;
     focusScannerInput();

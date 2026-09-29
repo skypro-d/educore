@@ -1054,5 +1054,54 @@ function parent_linked_children(): array
     return $stmt->fetchAll();
 }
 
+/**
+ * Normalizes scanned attendance QR payload into clean attendance code.
+ * Supports:
+ * Format 1 — NEW QR format: raw attendance code (e.g. ATTENDANCE-STD-3-dc089bd4)
+ * Format 2 — OLD QR format: URL with token param (e.g. https://domain.com/?route=attendance/scan&token=ATTENDANCE-STD-3-dc089bd4)
+ *
+ * @param string $value Scanned QR text
+ * @return string|null Clean attendance code, or null if invalid
+ */
+function normalizeAttendanceQr(string $value): ?string
+{
+    $value = trim($value);
+
+    if ($value === '') {
+        return null;
+    }
+
+    // Format 1 — New QR format: attendance code directly
+    // Examples: ATTENDANCE-STD-3-dc089bd4, ATTENDANCE-STD-QR-6ab57787b15d4, ATTENDANCE-STF-9-65c06ce7
+    if (preg_match('/^ATTENDANCE-[A-Z0-9_-]+$/i', $value)) {
+        return $value;
+    }
+
+    // Format 2 — Old QR format: URL or query string containing token=...
+    // Also handles scanner keyboard layout shifts like '?token:...' or '&token=...'
+    if (preg_match('/[?&_\-\^]token[=0\):]([^\s&#\^?]+)/i', $value, $matches)) {
+        $extracted = urldecode(rtrim($matches[1], '/'));
+        if (preg_match('/^ATTENDANCE-[A-Z0-9_-]+$/i', $extracted)) {
+            return $extracted;
+        }
+    }
+
+    // Standard parse_url fallback
+    if (filter_var($value, FILTER_VALIDATE_URL) || str_contains($value, 'token=')) {
+        $query = parse_url($value, PHP_URL_QUERY);
+        if ($query) {
+            parse_str($query, $params);
+            if (!empty($params['token'])) {
+                $token = trim((string) $params['token']);
+                if (preg_match('/^ATTENDANCE-[A-Z0-9_-]+$/i', $token)) {
+                    return $token;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
 
 

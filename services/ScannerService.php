@@ -433,43 +433,31 @@ final class ScannerService
             ];
         }
 
-        // 2. Sanitize & Normalize Token
-        $token = $rawCode;
-        if (preg_match('/[?&_\-\^]token[=0\):]([^\s&#\^?]+?)(?:http|$)/i', $rawCode, $matches)) {
-            $token = urldecode(rtrim($matches[1], '/'));
-        } elseif (preg_match('/[?&]token=([^&#\s]+)/i', $rawCode, $matches)) {
-            $token = urldecode(rtrim($matches[1], '/'));
+        // 2. Security Validation & Normalization
+        $attendanceCode = normalizeAttendanceQr($rawCode);
+        if ($attendanceCode === null) {
+            return [
+                'success'      => false,
+                'action'       => 'invalid',
+                'badge_status' => 'danger',
+                'title'        => '✕ Invalid QR Code',
+                'message'      => 'Invalid attendance QR code.',
+                'raw_code'     => $rawCode
+            ];
         }
-        $token = trim($token);
-        $normalizedToken = str_replace('/', '-', $token);
 
-        // 3. Locate Student Record
+        // 3. Locate Student Record (PDO Prepared Statement)
         $stmt = $this->db->prepare(
             "SELECT a.*, c.name AS class_name
              FROM applicants a
              LEFT JOIN classes c ON c.id = a.class_id
-             WHERE (a.qr_data = ? OR a.qr_data = ? OR a.admission_number = ? OR a.application_number = ?)
+             WHERE a.qr_data = ?
              LIMIT 1"
         );
-        $stmt->execute([$token, $normalizedToken, $token, $token]);
+        $stmt->execute([$attendanceCode]);
         $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // Fallback A: Token ID pattern match
-        if (!$student && preg_match('/attendance[-_\/]std[-_\/](\d+)/i', $rawCode, $m)) {
-            $studentId = (int) $m[1];
-            $stmtId = $this->db->prepare("SELECT a.*, c.name AS class_name FROM applicants a LEFT JOIN classes c ON c.id = a.class_id WHERE a.id = ? LIMIT 1");
-            $stmtId->execute([$studentId]);
-            $student = $stmtId->fetch(PDO::FETCH_ASSOC);
-        }
-
-        // Fallback B: Numeric ID fallback
-        if (!$student && ctype_digit($token)) {
-            $stmtId = $this->db->prepare("SELECT a.*, c.name AS class_name FROM applicants a LEFT JOIN classes c ON c.id = a.class_id WHERE a.id = ? LIMIT 1");
-            $stmtId->execute([(int) $token]);
-            $student = $stmtId->fetch(PDO::FETCH_ASSOC);
-        }
-
-        // 4. Handle Invalid Student Scan
+        // 4. Handle Student Not Found
         if (!$student) {
             $this->logScanEvent([
                 'school_id'          => $schoolId,
@@ -479,23 +467,24 @@ final class ScannerService
                 'student_id'         => null,
                 'person_type'        => 'unknown',
                 'scan_mode'          => $requestedMode,
-                'scan_action'        => 'invalid',
+                'scan_action'        => 'not_found',
                 'status'             => 'danger',
                 'identifier_scanned' => $rawCode,
-                'response_message'   => 'Scanned student ID or QR code could not be found.',
+                'response_message'   => 'Student not found.',
                 'ip_address'         => $ipAddress,
                 'date'               => $today
             ]);
 
-            StaffAudit::log('scanner.scan_invalid', 'applicants', null, "Invalid scan attempt: {$rawCode}");
+            StaffAudit::log('scanner.scan_invalid', 'applicants', null, "Student not found for scan attempt: {$attendanceCode}");
 
             return [
-                'success'      => false,
-                'action'       => 'invalid',
-                'badge_status' => 'danger',
-                'title'        => '✕ INVALID STUDENT',
-                'message'      => 'The scanned student ID could not be found. Please verify the ID card and try again.',
-                'raw_code'     => $rawCode
+                'success'           => false,
+                'action'            => 'not_found',
+                'badge_status'      => 'danger',
+                'title'             => '✕ Student Not Found',
+                'message'           => 'Student not found.',
+                'raw_code'          => $rawCode,
+                'attendance_number' => $attendanceCode
             ];
         }
 
@@ -547,23 +536,22 @@ final class ScannerService
             ]);
 
             return [
-                'success'      => false,
-                'action'       => 'inactive_student',
-                'badge_status' => 'danger',
-                'title'        => '✕ STUDENT INACTIVE',
-                'message'      => "Student {$studentName} is marked as {$statusLabel} in the system.",
-                'student'      => $studentInfo
+                'success'           => false,
+                'action'            => 'inactive_student',
+                'badge_status'      => 'danger',
+                'title'             => '✕ STUDENT INACTIVE',
+                'message'           => "Student {$studentName} is marked as {$statusLabel} in the system.",
+                'student'           => $studentInfo,
+                'attendance_number' => $attendanceCode
             ];
         }
 
         $studentId   = (int) $student['id'];
         $classId     = (int) ($student['class_id'] ?? 0);
-        $debounceMins = (int) setting('attendance_debounce_minutes', 15);
-        if ($debounceMins < 1) $debounceMins = 1;
 
         // 7. Check Today's Attendance State
         $chkStmt = $this->db->prepare(
-            "SELECT id, applicant_id, class_id, time_in, time_out, status, alert_sent, timeout_alert_sent
+            "SELECT id, applicant_id, class_id, time_in, time_out, status, alert_sent, timeout_alert_sent, created_at
              FROM attendance
              WHERE applicant_id = ? AND date = ?
              LIMIT 1"
@@ -582,13 +570,13 @@ final class ScannerService
         } elseif ($requestedMode === 'in') {
             $operation = 'IN';
         } else {
-            // Auto Mode
+            // Auto Mode: 3-step lifecycle
             if (!$existing) {
-                $operation = AttendanceRules::isDismissalTime() ? 'OUT' : 'IN';
+                $operation = 'IN';
             } elseif (empty($existing['time_out'])) {
-                $timeInSec = !empty($existing['time_in']) ? strtotime($today . ' ' . $existing['time_in']) : (time() - 3600);
-                $diffMins  = (int) round((time() - $timeInSec) / 60);
-                if ($diffMins < $debounceMins && !AttendanceRules::isDismissalTime()) {
+                $timeInSec = !empty($existing['time_in']) ? strtotime($today . ' ' . $existing['time_in']) : strtotime($existing['created_at'] ?? 'now');
+                $diffSec   = time() - $timeInSec;
+                if ($diffSec < 5) {
                     $operation = 'DUPLICATE_IN';
                 } else {
                     $operation = 'OUT';
@@ -602,7 +590,7 @@ final class ScannerService
         if ($operation === 'IN') {
             if ($existing && !empty($existing['time_in'])) {
                 // Already checked in
-                $timeInFormatted = date('g:i A', strtotime($today . ' ' . $existing['time_in']));
+                $timeInFormatted = date('h:i A', strtotime($today . ' ' . $existing['time_in']));
                 
                 $this->logScanEvent([
                     'school_id'          => $schoolId,
@@ -625,14 +613,15 @@ final class ScannerService
                 ]);
 
                 return [
-                    'success'      => false,
-                    'action'       => 'duplicate_in',
-                    'badge_status' => 'warning',
-                    'title'        => '⚠ ALREADY CHECKED IN',
-                    'message'      => "{$studentName} is already checked in today at {$timeInFormatted}.",
-                    'status'       => $existing['status'],
-                    'time'         => $timeInFormatted,
-                    'student'      => $studentInfo
+                    'success'           => false,
+                    'action'            => 'duplicate_in',
+                    'badge_status'      => 'warning',
+                    'title'             => 'ALREADY CHECKED IN',
+                    'message'           => 'No duplicate attendance event.',
+                    'status'            => $existing['status'],
+                    'time'              => $timeInFormatted,
+                    'student'           => $studentInfo,
+                    'attendance_number' => $attendanceCode
                 ];
             }
 
@@ -645,13 +634,14 @@ final class ScannerService
 
             if ($resolvedStatus === 'Denied') {
                 return [
-                    'success'      => false,
-                    'action'       => 'denied',
-                    'badge_status' => 'danger',
-                    'title'        => '✕ ENTRY DENIED',
-                    'message'      => "Attendance gate window is closed for today ({$nowTime}).",
-                    'time'         => date('g:i A', strtotime($nowTime)),
-                    'student'      => $studentInfo
+                    'success'           => false,
+                    'action'            => 'denied',
+                    'badge_status'      => 'danger',
+                    'title'             => '✕ ENTRY DENIED',
+                    'message'           => "Attendance gate window is closed for today ({$nowTime}).",
+                    'time'              => date('h:i A', strtotime($nowTime)),
+                    'student'           => $studentInfo,
+                    'attendance_number' => $attendanceCode
                 ];
             }
 
@@ -661,7 +651,7 @@ final class ScannerService
                 if ($existing) {
                     $upd = $this->db->prepare(
                         "UPDATE attendance 
-                         SET time_in = ?, status = ?, scan_method = 'qr_usb', marked_by = ?, updated_at = NOW() 
+                         SET time_in = ?, status = ?, scan_method = 'qr_usb', marked_by = ? 
                          WHERE id = ?"
                     );
                     $upd->execute([$nowTime, $resolvedStatus, $adminMarkedBy, $existing['id']]);
@@ -718,11 +708,13 @@ final class ScannerService
                 'success'             => true,
                 'action'              => 'check_in',
                 'badge_status'        => 'success',
-                'title'               => '✓ ENTRY RECORDED',
-                'message'             => "The student has been successfully checked in ({$resolvedStatus}).",
+                'title'               => '✓ TIME IN',
+                'message'             => "✓ Attendance Recorded\n\nStudent:\n{$studentName}\n\nAttendance Number:\n{$attendanceCode}\n\nAction:\nTIME IN\n\nTime:\n" . date('h:i A', strtotime($nowTime)) . "\n\nDate:\n" . date('d F Y'),
                 'status'              => $resolvedStatus,
-                'time'                => date('g:i:s A', strtotime($nowTime)),
+                'time'                => date('h:i A', strtotime($nowTime)),
+                'date'                => date('d F Y'),
                 'student'             => $studentInfo,
+                'attendance_number'   => $attendanceCode,
                 'notifications'       => [
                     'sms'   => $smsEnabled ? 'SMS Sent' : 'SMS Disabled',
                     'email' => $emailEnabled ? 'Email Sent' : 'Email Disabled'
@@ -734,7 +726,7 @@ final class ScannerService
         if ($operation === 'OUT') {
             if ($existing && !empty($existing['time_out'])) {
                 // Already checked out
-                $timeOutFormatted = date('g:i A', strtotime($today . ' ' . $existing['time_out']));
+                $timeOutFormatted = date('h:i A', strtotime($today . ' ' . $existing['time_out']));
 
                 $this->logScanEvent([
                     'school_id'          => $schoolId,
@@ -757,14 +749,16 @@ final class ScannerService
                 ]);
 
                 return [
-                    'success'      => false,
-                    'action'       => 'duplicate_out',
-                    'badge_status' => 'warning',
-                    'title'        => '⚠ ALREADY CHECKED OUT',
-                    'message'      => "{$studentName} already checked out today at {$timeOutFormatted}. No further exit scan required.",
-                    'status'       => 'Checked Out',
-                    'time'         => $timeOutFormatted,
-                    'student'      => $studentInfo
+                    'success'           => false,
+                    'action'            => 'duplicate_out',
+                    'badge_status'      => 'warning',
+                    'title'             => 'ALREADY COMPLETED',
+                    'message'           => 'Attendance already completed for today.',
+                    'status'            => 'Checked Out',
+                    'time'              => $timeOutFormatted,
+                    'date'              => date('d F Y'),
+                    'student'           => $studentInfo,
+                    'attendance_number' => $attendanceCode
                 ];
             }
 
@@ -804,7 +798,7 @@ final class ScannerService
                         (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, 'qr_usb', ?, 'verified', 'pending', NOW())"
                 );
                 $officerName = $officerContext['officer_name'] ?? 'Scanner Officer';
-                $insExit->execute([$schoolId, $studentId, $attendanceId, $exitType, $exitReason, $today, $nowTime, $adminMarkedBy, $officerName, $token]);
+                $insExit->execute([$schoolId, $studentId, $attendanceId, $exitType, $exitReason, $today, $nowTime, $adminMarkedBy, $officerName, $attendanceCode]);
                 $exitLogId = (int) $this->db->lastInsertId();
 
                 $this->db->commit();
@@ -861,11 +855,13 @@ final class ScannerService
                 'success'             => true,
                 'action'              => 'check_out',
                 'badge_status'        => 'primary',
-                'title'               => '✓ EXIT RECORDED',
-                'message'             => "The student departure has been successfully logged.",
+                'title'               => '✓ TIME OUT',
+                'message'             => "✓ Attendance Recorded\n\nStudent:\n{$studentName}\n\nAttendance Number:\n{$attendanceCode}\n\nAction:\nTIME OUT\n\nTime:\n" . date('h:i A', strtotime($nowTime)) . "\n\nDate:\n" . date('d F Y'),
                 'status'              => 'Checked Out',
-                'time'                => date('g:i:s A', strtotime($nowTime)),
+                'time'                => date('h:i A', strtotime($nowTime)),
+                'date'                => date('d F Y'),
                 'student'             => $studentInfo,
+                'attendance_number'   => $attendanceCode,
                 'notifications'       => [
                     'sms'   => $smsEnabled ? 'SMS Sent' : 'SMS Disabled',
                     'email' => $emailEnabled ? 'Email Sent' : 'Email Disabled'
@@ -875,30 +871,34 @@ final class ScannerService
 
         // Duplicate fallbacks
         if ($operation === 'DUPLICATE_IN') {
-            $timeInFormatted = date('g:i A', strtotime($today . ' ' . $existing['time_in']));
+            $timeInFormatted = date('h:i A', strtotime($today . ' ' . $existing['time_in']));
             return [
-                'success'      => false,
-                'action'       => 'duplicate_in',
-                'badge_status' => 'warning',
-                'title'        => '⚠ ALREADY CHECKED IN',
-                'message'      => "{$studentName} is already checked in today at {$timeInFormatted}.",
-                'status'       => $existing['status'],
-                'time'         => $timeInFormatted,
-                'student'      => $studentInfo
+                'success'           => false,
+                'action'            => 'duplicate_in',
+                'badge_status'      => 'warning',
+                'title'             => 'ALREADY CHECKED IN',
+                'message'           => 'No duplicate attendance event.',
+                'status'            => $existing['status'],
+                'time'              => $timeInFormatted,
+                'date'              => date('d F Y'),
+                'student'           => $studentInfo,
+                'attendance_number' => $attendanceCode
             ];
         }
 
         if ($operation === 'DUPLICATE_OUT') {
-            $timeOutFormatted = date('g:i A', strtotime($today . ' ' . $existing['time_out']));
+            $timeOutFormatted = date('h:i A', strtotime($today . ' ' . $existing['time_out']));
             return [
-                'success'      => false,
-                'action'       => 'duplicate_out',
-                'badge_status' => 'warning',
-                'title'        => '⚠ ALREADY CHECKED OUT',
-                'message'      => "{$studentName} already checked out today at {$timeOutFormatted}.",
-                'status'       => 'Checked Out',
-                'time'         => $timeOutFormatted,
-                'student'      => $studentInfo
+                'success'           => false,
+                'action'            => 'duplicate_out',
+                'badge_status'      => 'warning',
+                'title'             => 'ALREADY COMPLETED',
+                'message'           => 'Attendance already completed for today.',
+                'status'            => 'Checked Out',
+                'time'              => $timeOutFormatted,
+                'date'              => date('d F Y'),
+                'student'           => $studentInfo,
+                'attendance_number' => $attendanceCode
             ];
         }
 
